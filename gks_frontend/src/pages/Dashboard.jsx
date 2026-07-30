@@ -1,26 +1,39 @@
 import { useState, useEffect } from 'react';
-import api from '../api/axios';
 import { Link } from 'react-router-dom';
+import api from '../api/axios';
 import { socket } from '../api/socket';
 
-function Dashboard() {
-  const [stats, setStats] = useState({
-    AktifPersonel: 0,
-    BugunGecis: 0,
-    YetkisizGiris: 0,
-    AktifKapi: 0
-  });
-  const [recentLogs, setRecentLogs] = useState([]);
-  const [loading, setLoading] = useState(true);
+// Recharts Grafik Bileşenleri
+import { 
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, Legend
+} from 'recharts';
 
- // --- YENİ YAPI: SOCKET.IO İLE ANLIK GÜNCELLEME ---
+function Dashboard() {
+  const [loading, setLoading] = useState(true);
+  const [timeFilter, setTimeFilter] = useState('gunluk'); 
+  const [currentTime, setCurrentTime] = useState(new Date());
+  
+  const [stats, setStats] = useState({ AktifPersonel: 0, BugunGecis: 0, YetkisizGiris: 0, AktifKapi: 0 });
+  const [recentLogs, setRecentLogs] = useState([]);
+  
+  // YENİ: Grafikler için gerçek verileri tutacağımız state'ler
+  const [trendData, setTrendData] = useState([]);
+  const [deptData, setDeptData] = useState([]);
+
   useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+
     const fetchDashboardData = async () => {
       try {
-        const response = await api.get('/dashboard/summary');
+        // timeFilter değerini API'ye parametre olarak gönderiyoruz
+        const response = await api.get('/dashboard/summary', { params: { filter: timeFilter } }); 
+        
         if (response.data.success) {
             setStats(response.data.stats);
             setRecentLogs(response.data.recentLogs);
+            setTrendData(response.data.trendData); // YENİ
+            setDeptData(response.data.deptData);   // YENİ
         }
       } catch (err) {
         console.error("Dashboard verileri çekilemedi.", err);
@@ -29,17 +42,17 @@ function Dashboard() {
       }
     };
 
-    fetchDashboardData(); // Sayfa açıldığında ilk veriyi çek
+    fetchDashboardData();
 
-    // Yeni bir geçiş olduğunda, personel/kapı eklendiğinde Dashboard'u yenile
     socket.on('new_rfid_log', fetchDashboardData);
     socket.on('system_updated', fetchDashboardData); 
 
-    return () => {
+return () => {
+      clearInterval(timer);
       socket.off('new_rfid_log', fetchDashboardData);
       socket.off('system_updated', fetchDashboardData);
     };
-  }, []);
+  }, [timeFilter]);
 
   const formatDate = (dateString) => {
     if (!dateString) return '-';
@@ -47,11 +60,52 @@ function Dashboard() {
     return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
 
+  // --- GRAFİKLER İÇİN DİNAMİK (MOCK) VERİLER ---
+  const mockTrendDataGunluk = [
+    { label: '08:00', basarili: 120, yetkisiz: 5 },
+    { label: '10:00', basarili: 45, yetkisiz: 2 },
+    { label: '12:00', basarili: 180, yetkisiz: 8 },
+    { label: '14:00', basarili: 60, yetkisiz: 3 },
+    { label: '16:00', basarili: 55, yetkisiz: 1 },
+    { label: '18:00', basarili: 150, yetkisiz: 7 },
+  ];
+
+  const mockTrendDataHaftalik = [
+    { label: 'Pzt', basarili: 850, yetkisiz: 12 },
+    { label: 'Sal', basarili: 880, yetkisiz: 8 },
+    { label: 'Çar', basarili: 860, yetkisiz: 15 },
+    { label: 'Per', basarili: 890, yetkisiz: 5 },
+    { label: 'Cum', basarili: 820, yetkisiz: 20 },
+    { label: 'Cmt', basarili: 150, yetkisiz: 2 },
+    { label: 'Paz', basarili: 50, yetkisiz: 1 },
+  ];
+
+  const mockTrendDataAylik = [
+    { label: '1. Hafta', basarili: 4200, yetkisiz: 45 },
+    { label: '2. Hafta', basarili: 4500, yetkisiz: 30 },
+    { label: '3. Hafta', basarili: 4300, yetkisiz: 50 },
+    { label: '4. Hafta', basarili: 4600, yetkisiz: 25 },
+  ];
+
+  // Seçilen filtreye göre veriyi döndüren yardımcı fonksiyon
+  const getActiveTrendData = () => {
+    if (timeFilter === 'haftalik') return mockTrendDataHaftalik;
+    if (timeFilter === 'aylik') return mockTrendDataAylik;
+    return mockTrendDataGunluk;
+  };
+
+  const mockDeptData = [
+    { name: 'İşletme', gelen: 45, gelmeyen: 5 },
+    { name: 'Bilgi İşlem', gelen: 20, gelmeyen: 1 },
+    { name: 'Güvenlik', gelen: 15, gelmeyen: 0 },
+    { name: 'Üretim', gelen: 85, gelmeyen: 10 },
+  ];
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex items-center justify-center h-[80vh]">
         <div className="flex flex-col items-center">
-          <span className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></span>
+          <span className="w-12 h-12 border-4 border-slate-200 border-t-cyan-500 rounded-full animate-spin"></span>
           <span className="mt-4 font-bold text-slate-500 animate-pulse">Sistem Verileri Yükleniyor...</span>
         </div>
       </div>
@@ -59,64 +113,157 @@ function Dashboard() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in-up pb-10">
+    <div className="space-y-6 animate-fade-in-up pb-10 mt-6">
       
-      {/* KARŞILAMA ALANI */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-r from-slate-900 to-slate-800 p-8 rounded-2xl shadow-lg text-white">
+      {/* ÜST BİLGİ, SAAT VE FİLTRELEME ALANI */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
         <div>
-          <h1 className="text-3xl font-black tracking-tight">Sisteme Hoş Geldiniz</h1>
-          <p className="text-slate-300 mt-2 text-sm">GKS<span className="text-blue-400 font-bold">PRO</span> - Kurumsal Personel Devam ve Geçiş Kontrol Sistemi</p>
+          <h1 className="text-3xl font-black text-slate-800 tracking-tight">Kontrol Paneli</h1>
+          <p className="text-slate-500 text-sm mt-1">Sistemdeki anlık durumu ve geçiş trendlerini takip edin.</p>
         </div>
-        <div className="text-right">
-          <p className="text-sm font-bold text-slate-400">Tarih</p>
-          <p className="text-xl font-bold">{new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' })}</p>
+        
+        <div className="flex flex-col items-end gap-4">
+          {/* YENİ: Tarih ve Saat Göstergesi */}
+          <div className="text-right">
+            <p className="text-sm font-bold text-cyan-600 uppercase tracking-wide">
+              {currentTime.toLocaleDateString('tr-TR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            </p>
+            <p className="text-2xl font-black text-slate-800 leading-none mt-1">
+              {currentTime.toLocaleTimeString('tr-TR')}
+            </p>
+          </div>
+
+          {/* ZAMAN FİLTRESİ */}
+          <div className="bg-slate-50 p-1 rounded-xl border border-slate-200 inline-flex">
+            <button 
+              onClick={() => setTimeFilter('gunluk')}
+              className={`px-5 py-2.5 rounded-lg text-sm font-bold transition-all ${timeFilter === 'gunluk' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'}`}
+            >
+              Günlük
+            </button>
+            <button 
+              onClick={() => setTimeFilter('haftalik')}
+              className={`px-5 py-2.5 rounded-lg text-sm font-bold transition-all ${timeFilter === 'haftalik' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'}`}
+            >
+              Haftalık
+            </button>
+            <button 
+              onClick={() => setTimeFilter('aylik')}
+              className={`px-5 py-2.5 rounded-lg text-sm font-bold transition-all ${timeFilter === 'aylik' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'}`}
+            >
+              Aylık
+            </button>
+          </div>
         </div>
       </div>
 
       {/* İSTATİSTİK WIDGET KARTLARI */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         
-        {/* Personel Kartı */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center group transition-all hover:border-blue-300 hover:shadow-md">
-          <div className="w-14 h-14 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
-            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform group-hover:opacity-20 text-blue-600">
+             <svg className="w-16 h-16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
           </div>
-          <div>
-            <p className="text-sm font-bold text-slate-500">Aktif Personel</p>
-            <h3 className="text-2xl font-black text-slate-800">{stats.AktifPersonel} <span className="text-sm font-normal text-slate-400">Kişi</span></h3>
+          <p className="text-sm font-bold text-slate-500 relative z-10">Aktif Personel</p>
+          <h3 className="text-3xl font-black text-slate-800 mt-1 relative z-10">{stats.AktifPersonel}</h3>
+          <p className="text-xs font-bold text-blue-500 mt-2 relative z-10 flex items-center">
+            Sistemde kayıtlı çalışanlar
+          </p>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform group-hover:opacity-20 text-emerald-600">
+             <svg className="w-16 h-16" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+          </div>
+          <p className="text-sm font-bold text-slate-500 relative z-10">İşe Gelen / Geçişler</p>
+          <h3 className="text-3xl font-black text-slate-800 mt-1 relative z-10">{stats.BugunGecis}</h3>
+          <p className="text-xs font-bold text-emerald-500 mt-2 relative z-10 flex items-center">
+            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
+            Başarılı okutulan kartlar
+          </p>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform group-hover:opacity-20 text-red-600">
+             <svg className="w-16 h-16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+          </div>
+          <p className="text-sm font-bold text-slate-500 relative z-10">İzinsiz Hareketler</p>
+          <h3 className="text-3xl font-black text-red-600 mt-1 relative z-10">{stats.YetkisizGiris}</h3>
+          <p className="text-xs font-bold text-red-500 mt-2 relative z-10 flex items-center">
+            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+            Yetkisiz erişim denemesi
+          </p>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform group-hover:opacity-20 text-amber-500">
+             <svg className="w-16 h-16" fill="currentColor" viewBox="0 0 24 24"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+          </div>
+          <p className="text-sm font-bold text-slate-500 relative z-10">Aktif Kapı / Turnike</p>
+          <h3 className="text-3xl font-black text-slate-800 mt-1 relative z-10">{stats.AktifKapi}</h3>
+          <p className="text-xs font-bold text-amber-600 mt-2 relative z-10 flex items-center">
+            Sistemde dinlenen kapılar
+          </p>
+        </div>
+
+      </div>
+
+      {/* GRAFİKLER ALANI */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        {/* Çizgi Grafik (Alan Grafiği) - Geçiş Trendi */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+          <h3 className="text-lg font-bold text-slate-800 mb-4">
+            Geçiş Trendi <span className="text-xs font-normal text-slate-500">({timeFilter.toUpperCase()})</span>
+          </h3>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              {/* YENİ: data prop'u seçilen filtreye göre dinamik geliyor */}
+              <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorBasarili" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorYetkisiz" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                {/* YENİ: dataKey 'saat' yerine 'label' yapıldı */}
+                <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
+                <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
+                <Tooltip 
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  labelStyle={{ fontWeight: 'bold', color: '#1e293b' }}
+                />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}/>
+                <Area type="monotone" name="Başarılı Geçiş" dataKey="basarili" stroke="#0ea5e9" strokeWidth={3} fillOpacity={1} fill="url(#colorBasarili)" />
+                <Area type="monotone" name="İzinsiz Deneme" dataKey="yetkisiz" stroke="#ef4444" strokeWidth={3} fillOpacity={1} fill="url(#colorYetkisiz)" />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Yetkisiz Giriş Kartı (Senin mevcut veritabanından) */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center group transition-all hover:border-red-300 hover:shadow-md">
-          <div className="w-14 h-14 rounded-xl bg-red-50 text-red-600 flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
-            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-          </div>
-          <div>
-            <p className="text-sm font-bold text-slate-500">Yetkisiz Deneme</p>
-            <h3 className="text-2xl font-black text-red-600">{stats.YetkisizGiris} <span className="text-sm font-normal text-slate-400">İşlem</span></h3>
-          </div>
-        </div>
-
-        {/* Geçiş Kartı */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center group transition-all hover:border-purple-300 hover:shadow-md">
-          <div className="w-14 h-14 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
-            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
-          </div>
-          <div>
-            <p className="text-sm font-bold text-slate-500">Bugünkü Geçişler</p>
-            <h3 className="text-2xl font-black text-slate-800">{stats.BugunGecis} <span className="text-sm font-normal text-slate-400">İşlem</span></h3>
-          </div>
-        </div>
-
-        {/* Kapı Kartı */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center group transition-all hover:border-amber-300 hover:shadow-md">
-          <div className="w-14 h-14 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
-            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
-          </div>
-          <div>
-            <p className="text-sm font-bold text-slate-500">Aktif Kapı / Turnike</p>
-            <h3 className="text-2xl font-black text-slate-800">{stats.AktifKapi} <span className="text-sm font-normal text-slate-400">Adet</span></h3>
+        {/* Bar Grafik - Departman Bazlı Katılım */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+          <h3 className="text-lg font-bold text-slate-800 mb-4">Departman Katılım Özeti</h3>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={deptData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
+                <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
+                <Tooltip 
+                  cursor={{fill: '#f8fafc'}}
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}/>
+                <Bar name="Gelen Personel" dataKey="gelen" fill="#10b981" radius={[4, 4, 0, 0]} barSize={30} />
+                <Bar name="Gelmeyen / İzinli" dataKey="gelmeyen" fill="#cbd5e1" radius={[4, 4, 0, 0]} barSize={30} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
 
@@ -129,18 +276,18 @@ function Dashboard() {
         <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50">
             <h3 className="font-bold text-slate-800">Canlı Geçiş İzleme</h3>
-            <span className="flex items-center text-xs font-bold text-green-600">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse mr-2"></span> Canlı Akış
+            <span className="flex items-center text-xs font-bold text-emerald-600">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse mr-2"></span> Canlı Akış
             </span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
-                  <th className="p-4 font-bold border-b border-slate-200">Saat</th>
-                  <th className="p-4 font-bold border-b border-slate-200">Personel</th>
-                  <th className="p-4 font-bold border-b border-slate-200">Kapı Bilgisi</th>
-                  <th className="p-4 font-bold border-b border-slate-200 text-center">Durum</th>
+                <tr className="bg-white text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
+                  <th className="p-4 font-bold">Saat</th>
+                  <th className="p-4 font-bold">Personel</th>
+                  <th className="p-4 font-bold">Kapı Bilgisi</th>
+                  <th className="p-4 font-bold text-center">Durum</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -158,11 +305,11 @@ function Dashboard() {
                       </td>
                       <td className="p-4 text-center">
                         {log.Basarili_Mi ? (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-800 border border-green-200">
-                            Geçiş Onaylandı
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
+                            Onaylandı
                           </span>
                         ) : (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800 border border-red-200">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800">
                             Yetkisiz İşlem
                           </span>
                         )}
@@ -178,7 +325,7 @@ function Dashboard() {
             </table>
           </div>
           <div className="p-3 bg-slate-50 border-t border-slate-200 text-center">
-            <Link to="/logs/doors" className="text-sm font-bold text-blue-600 hover:text-blue-800">Tüm Geçiş Loglarını Görüntüle →</Link>
+            <Link to="/loglar/gecis" className="text-sm font-bold text-blue-600 hover:text-blue-800 transition-colors">Tüm Geçiş Loglarını Görüntüle →</Link>
           </div>
         </div>
 
@@ -188,7 +335,18 @@ function Dashboard() {
             <h3 className="font-bold text-slate-800">Hızlı Kısayollar</h3>
           </div>
           <div className="p-4 space-y-3">
-            <Link to="/leaves" className="flex items-center justify-between p-4 rounded-xl border border-slate-100 hover:border-rose-300 hover:bg-rose-50 transition-colors group">
+            
+            <Link to="/personel/bireysel" className="flex items-center justify-between p-4 rounded-xl border border-slate-100 hover:border-blue-300 hover:bg-blue-50 transition-colors group">
+              <div className="flex items-center">
+                <div className="w-10 h-10 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center mr-3 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
+                </div>
+                <span className="font-bold text-slate-700">Yeni Personel Ekle</span>
+              </div>
+              <svg className="w-4 h-4 text-slate-400 group-hover:text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
+            </Link>
+
+            <Link to="/izinler" className="flex items-center justify-between p-4 rounded-xl border border-slate-100 hover:border-rose-300 hover:bg-rose-50 transition-colors group">
               <div className="flex items-center">
                 <div className="w-10 h-10 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center mr-3 group-hover:bg-rose-600 group-hover:text-white transition-colors">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
@@ -197,27 +355,8 @@ function Dashboard() {
               </div>
               <svg className="w-4 h-4 text-slate-400 group-hover:text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
             </Link>
-            <Link to="/personnel/operations" className="flex items-center justify-between p-4 rounded-xl border border-slate-100 hover:border-blue-300 hover:bg-blue-50 transition-colors group">
-              <div className="flex items-center">
-                <div className="w-10 h-10 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center mr-3 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
-                </div>
-                <span className="font-bold text-slate-700">Yeni Personel Ekle</span>
-              </div>
-              <svg className="w-4 h-4 text-slate-400 group-hover:text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
-            </Link>
 
-            <Link to="/doors/permissions" className="flex items-center justify-between p-4 rounded-xl border border-slate-100 hover:border-purple-300 hover:bg-purple-50 transition-colors group">
-              <div className="flex items-center">
-                <div className="w-10 h-10 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center mr-3 group-hover:bg-purple-600 group-hover:text-white transition-colors">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
-                </div>
-                <span className="font-bold text-slate-700">Yetki Atama Matrisi</span>
-              </div>
-              <svg className="w-4 h-4 text-slate-400 group-hover:text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
-            </Link>
-
-            <Link to="/reports" className="flex items-center justify-between p-4 rounded-xl border border-slate-100 hover:border-emerald-300 hover:bg-emerald-50 transition-colors group">
+            <Link to="/puantaj" className="flex items-center justify-between p-4 rounded-xl border border-slate-100 hover:border-emerald-300 hover:bg-emerald-50 transition-colors group">
               <div className="flex items-center">
                 <div className="w-10 h-10 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center mr-3 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
@@ -226,6 +365,7 @@ function Dashboard() {
               </div>
               <svg className="w-4 h-4 text-slate-400 group-hover:text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
             </Link>
+
           </div>
         </div>
 
