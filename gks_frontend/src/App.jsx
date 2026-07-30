@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Routes, Route, Link, Navigate } from 'react-router-dom';
 import Logs from './pages/Logs';
-import Users from './pages/Users';
 import Login from './pages/Login';
 import Settings from './pages/Settings';
 import HesapEkle from './pages/HesapEkle';
+import Dashboard from './pages/Dashboard';
+import PersonnelHub from './pages/PersonnelHub';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'));
@@ -41,8 +42,11 @@ function App() {
         </div>
         
         <div className="flex items-center space-x-8">
-          <Link to="/" className="text-slate-300 hover:text-cyan-400 transition-colors font-semibold tracking-wide">Loglar</Link>
-          <Link to="/users" className="text-slate-300 hover:text-cyan-400 transition-colors font-semibold tracking-wide">Personel Yönetimi</Link>
+          <Link to="/" className="text-slate-300 hover:text-cyan-400 transition-colors font-semibold tracking-wide">Ana Sayfa</Link>
+          <Link to="/logs" className="text-slate-300 hover:text-cyan-400 transition-colors font-semibold tracking-wide">Loglar</Link>
+          
+          {/* Tasarımı düzeltilmiş Personel Yönetimi Linki */}
+          <Link to="/personel" className="text-slate-300 hover:text-cyan-400 transition-colors font-semibold tracking-wide">Personel Yönetimi</Link>          
           
           {userRole === 'admin' && (
             <Link to="/hesap-ekle" className="text-slate-300 hover:text-cyan-400 transition-colors font-semibold tracking-wide">Yeni Hesap</Link>
@@ -62,12 +66,13 @@ function App() {
       {/* Sayfaların Gösterileceği Alan */}
       <div className="px-6 pb-10">
         <Routes>
-          <Route path="/" element={<Logs />} />
-          <Route path="/users" element={<Users />} />
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/logs" element={<Logs />} />
+          <Route path="/personel" element={<PersonnelHub />} />
           <Route path="/settings" element={<Settings />} />
-          
           <Route path="/hesap-ekle" element={<HesapEkle />} />
           
+          {/* Hatalı URL girilirse Ana Sayfaya atacak kural en sona alındı */}
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </div>

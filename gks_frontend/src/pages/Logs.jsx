@@ -1,84 +1,123 @@
-import { useState, useEffect } from 'react';
-import api from '../api/axios'; 
+import { useState } from 'react';
+import api from '../api/axios';
+
+// AG Grid importları
+import { AgGridReact } from 'ag-grid-react';
+import 'ag-grid-community/styles/ag-grid.css';
+import 'ag-grid-community/styles/ag-theme-quartz.css'; // Modern Quartz teması
 
 function Logs() {
+  const bugunTarihi = new Date();
+  const bitisTarihi = bugunTarihi.toISOString().split('T')[0];
+  const baslangicTarihi = new Date(bugunTarihi.setMonth(bugunTarihi.getMonth() - 1)).toISOString().split('T')[0];
+
+  const [filters, setFilters] = useState({ baslangic: baslangicTarihi, bitis: bitisTarihi, arama: '' });
   const [logs, setLogs] = useState([]);
-  const [error, setError] = useState(null);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const fetchLogs = async () => {
-      try {
-        const response = await api.get('/logs');
-        setLogs(response.data);
-      } catch (err) {
-        setError("Veriler çekilirken bir hata oluştu.");
+// --- AG GRID SÜTUN AYARLARI ---
+  const [colDefs] = useState([
+    { field: 'ID', headerName: 'ID', width: 90 },
+    { 
+      field: 'Ad_Soyad', 
+      headerName: 'Personel Adı', 
+      flex: 1,
+      // ÇÖZÜM: Boş isimleri kırmızı ve eğik yazıyla "Bilinmeyen Kişi" yapar
+      cellRenderer: (params) => {
+        return params.value ? (
+          <span className="font-medium text-slate-800">{params.value}</span>
+        ) : (
+          <span className="text-red-500 italic font-bold">Bilinmeyen Kişi</span>
+        );
       }
-    };
-    fetchLogs();
-  }, []);
+    },
+    { field: 'RFID_Kart_No', headerName: 'Kart No', flex: 1 },
+    { field: 'Kapi_Adi', headerName: 'Kapı', flex: 1 },
+    { 
+      field: 'Basarili_Mi', 
+      headerName: 'Durum', 
+      width: 130,
+      cellRenderer: (params) => {
+        return params.value 
+          ? <span className="text-green-600 font-bold">Başarılı</span> 
+          : <span className="text-red-600 font-bold">Reddedildi</span>;
+      }
+    },
+    { 
+      field: 'Zaman', 
+      headerName: 'Tarih / Saat', 
+      flex: 1,
+      cellRenderer: (params) => new Date(params.value).toLocaleString('tr-TR')
+    }
+  ]);
 
-  // Zaman formatını güzelleştirmek için ufak bir yardımcı fonksiyon
-  const formatZaman = (zamanString) => {
-    const options = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' };
-    return new Date(zamanString).toLocaleDateString('tr-TR', options);
+  // ÇÖZÜM: Tüm sütunların arasına dikey gri bir çizgi ekler
+  const defaultColDef = {
+    filter: true, // Hepsinde filtre açar
+    resizable: true, // Sütun genişliklerini manuel ayarlamaya izin verir
+    cellStyle: { borderRight: '1px solid #cbd5e1' }, // Sütunlar arasına çizgi çeker
+    headerClass: 'border-r border-slate-300' // Başlıklar arasına da çizgi çeker
+  };
+
+  const handleFetchData = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const response = await api.get('/logs', { params: filters });
+      setLogs(response.data);
+      setHasSearched(true);
+    } catch (err) {
+      console.error("Veriler çekilemedi:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Canlı Geçiş Logları</h2>
-        <span className="flex items-center gap-2 text-sm text-green-600 bg-green-50 px-3 py-1 rounded-full font-medium">
-          <span className="relative flex h-3 w-3">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-          </span>
-          Canlı İzleme Aktif
-        </span>
+    <div className="mt-8 flex flex-col h-[85vh] space-y-4">
+      <div>
+        <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Geçiş Logları</h2>
+        <p className="text-slate-500 text-sm mt-1">Lütfen görüntülemek istediğiniz aralığı seçin.</p>
       </div>
 
-      {error && <p className="text-red-500 bg-red-50 p-4 rounded-lg mb-4 font-semibold text-center border border-red-200">{error}</p>}
+      <form onSubmit={handleFetchData} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4 shrink-0">
+        <div>
+          <label className="block text-xs font-bold text-slate-600 mb-1">Başlangıç Tarihi</label>
+          <input type="date" value={filters.baslangic} onChange={(e) => setFilters({...filters, baslangic: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-600 mb-1">Bitiş Tarihi</label>
+          <input type="date" value={filters.bitis} onChange={(e) => setFilters({...filters, bitis: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-600 mb-1">Ad Soyad / Kart No</label>
+          <input type="text" placeholder="İsim veya kart ara..." value={filters.arama} onChange={(e) => setFilters({...filters, arama: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div className="flex items-end">
+          <button type="submit" disabled={loading} className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg transition-colors">
+            {loading ? 'Aranıyor...' : 'Logları Getir'}
+          </button>
+        </div>
+      </form>
 
-      {/* --- PROFESYONEL VERİ TABLOSU --- */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="text-xs text-slate-500 uppercase bg-slate-50 rounded-t-lg">
-            <tr>
-              <th scope="col" className="px-6 py-4 rounded-tl-lg">ID</th>
-              <th scope="col" className="px-6 py-4">Tarih / Saat</th>
-              <th scope="col" className="px-6 py-4">Ad Soyad</th>
-              <th scope="col" className="px-6 py-4">Kart No</th>
-              <th scope="col" className="px-6 py-4">Kapı Adı</th>
-              <th scope="col" className="px-6 py-4 rounded-tr-lg">Durum</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {logs.length > 0 ? (
-              logs.map((log) => (
-                <tr key={log.ID} className="bg-white hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-4 font-mono text-slate-500 text-xs">{log.ID}</td>
-                  <td className="px-6 py-4 font-medium text-slate-800">{formatZaman(log.Zaman)}</td>
-                  <td className="px-6 py-4 font-semibold text-slate-950">{log.Ad_Soyad}</td>
-                  <td className="px-6 py-4 font-mono text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded text-xs inline-block mt-3">{log.RFID_Kart_No}</td>
-                  <td className="px-6 py-4 text-blue-800 font-medium">{log.Kapi_Adi}</td>
-                  <td className="px-6 py-4">
-                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
-                      log.Basarili_Mi 
-                        ? 'bg-green-100 text-green-900 border border-green-200' 
-                        : 'bg-red-100 text-red-900 border border-red-200'
-                    }`}>
-                      {log.Basarili_Mi ? '✓ Başarılı' : '✕ Reddedildi'}
-                    </span>
-                  </td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan="6" className="px-6 py-12 text-center text-slate-500 italic bg-slate-50">Sistemde henüz log kaydı bulunmuyor veya veriler yükleniyor...</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {/* AG GRID TABLOSU */}
+      {hasSearched && (
+        <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col p-2">
+          <div className="p-2 text-sm font-bold text-slate-700">Arama Sonuçları ({logs.length} Kayıt)</div>
+          
+          <div className="ag-theme-quartz flex-1 w-full h-full">
+            <AgGridReact
+              rowData={logs}
+              columnDefs={colDefs}
+              defaultColDef={defaultColDef} // <-- BURA EKLENDİ
+              pagination={true}
+              paginationPageSize={50} // Sayfa başına 50 kayıt gösterir
+              domLayout="normal"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
