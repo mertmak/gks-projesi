@@ -43,8 +43,15 @@ const AG_GRID_LOCALE_TR = {
   noRowsToShow: 'Gösterilecek kayıt bulunamadı.'
 };
 
-function Doors() {
-  const [doors, setDoors] = useState([]);
+// MSSQL'den gelen saat verisini (Örn: 1970-01-01T09:00:00.000Z veya 09:00:00) HH:mm formatına çeviren yardımcı fonksiyon
+const formatTimeForInput = (val) => {
+  if (!val) return '';
+  if (val.includes('T')) return val.split('T')[1].substring(0, 5);
+  return val.substring(0, 5);
+};
+
+function Shifts() {
+  const [shifts, setShifts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
   
@@ -52,33 +59,41 @@ function Doors() {
   const [arama, setArama] = useState('');
   const [suggestions, setSuggestions] = useState([]);
 
-  // DÜZENLEME (EDIT) VE EKLEME STATE'LERİ (YENİ: kapi_turu eklendi)
+  // DÜZENLEME (EDIT) VE EKLEME STATE'LERİ
   const [isEditing, setIsEditing] = useState(false);
   const [editId, setEditId] = useState(null);
-  const [formData, setFormData] = useState({ kapi_adi: '', departman: '', konum: '', kapi_turu: 'İç Geçiş' });
+  const [formData, setFormData] = useState({ 
+    vardiya_adi: '', 
+    mesai_baslangic: '', 
+    mesai_bitis: '', 
+    yemek_baslangic: '', 
+    yemek_bitis: '', 
+    tolerans_dk: 0, 
+    mola_hakki_dk: 0 
+  });
 
-  const fetchDoors = async () => {
+  const fetchShifts = async () => {
     setLoading(true);
     try {
-      const response = await api.get('/doors');
-      setDoors(response.data);
+      const response = await api.get('/shifts');
+      setShifts(response.data);
     } catch (err) {
-      console.error("Kapılar çekilemedi:", err);
+      console.error("Vardiyalar çekilemedi:", err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchDoors();
+    fetchShifts();
   }, []);
 
   // --- SESSİZ CANLI GÜNCELLEME (REAL-TIME POLLING) ---
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        const response = await api.get('/doors');
-        setDoors(response.data); 
+        const response = await api.get('/shifts');
+        setShifts(response.data); 
       } catch (err) {
         console.error("Arka plan güncelleme hatası:", err);
       }
@@ -92,8 +107,8 @@ function Doors() {
     setArama(value);
 
     if (value.length >= 2) {
-      const filteredSuggestions = doors.filter(door => 
-        door.Kapi_Adi.toLowerCase().includes(value.toLowerCase())
+      const filteredSuggestions = shifts.filter(shift => 
+        shift.Vardiya_Adi.toLowerCase().includes(value.toLowerCase())
       );
       setSuggestions(filteredSuggestions.slice(0, 5));
     } else {
@@ -101,15 +116,15 @@ function Doors() {
     }
   };
 
-  const handleSuggestionClick = (door) => {
-    setArama(door.Kapi_Adi);
+  const handleSuggestionClick = (shift) => {
+    setArama(shift.Vardiya_Adi);
     setSuggestions([]);
   };
 
-  const filteredDoors = useMemo(() => {
-    if (!arama) return doors;
-    return doors.filter(door => door.Kapi_Adi.toLowerCase().includes(arama.toLowerCase()));
-  }, [arama, doors]);
+  const filteredShifts = useMemo(() => {
+    if (!arama) return shifts;
+    return shifts.filter(shift => shift.Vardiya_Adi.toLowerCase().includes(arama.toLowerCase()));
+  }, [arama, shifts]);
 
   // --- FORM İŞLEMLERİ ---
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -119,47 +134,50 @@ function Doors() {
     setMessage({ text: '', type: '' });
     try {
       if (isEditing) {
-        await api.put(`/doors/${editId}`, formData);
-        setMessage({ text: 'Kapı başarıyla güncellendi.', type: 'success' });
+        await api.put(`/shifts/${editId}`, formData);
+        setMessage({ text: 'Vardiya başarıyla güncellendi.', type: 'success' });
       } else {
-        await api.post('/doors', formData);
-        setMessage({ text: 'Yeni kapı sisteme eklendi.', type: 'success' });
+        await api.post('/shifts', formData);
+        setMessage({ text: 'Yeni vardiya sisteme eklendi.', type: 'success' });
       }
       
-      setFormData({ kapi_adi: '', departman: '', konum: '', kapi_turu: 'İç Geçiş' });
+      setFormData({ vardiya_adi: '', mesai_baslangic: '', mesai_bitis: '', yemek_baslangic: '', yemek_bitis: '', tolerans_dk: 0, mola_hakki_dk: 0 });
       setIsEditing(false);
       setEditId(null);
-      fetchDoors(); 
+      fetchShifts(); 
     } catch (err) {
       setMessage({ text: err.response?.data?.message || 'İşlem başarısız oldu.', type: 'error' });
     }
   };
 
-  const handleEditClick = (door) => {
+  const handleEditClick = (shift) => {
     setIsEditing(true);
-    setEditId(door.ID);
+    setEditId(shift.ID);
     setFormData({ 
-      kapi_adi: door.Kapi_Adi || '',
-      departman: door.Departman || '',
-      konum: door.Konum || '',
-      kapi_turu: door.Kapi_Turu || 'İç Geçiş'
+      vardiya_adi: shift.Vardiya_Adi || '',
+      mesai_baslangic: formatTimeForInput(shift.Mesai_Baslangic),
+      mesai_bitis: formatTimeForInput(shift.Mesai_Bitis),
+      yemek_baslangic: formatTimeForInput(shift.Yemek_Baslangic),
+      yemek_bitis: formatTimeForInput(shift.Yemek_Bitis),
+      tolerans_dk: shift.Tolerans_Dk || 0,
+      mola_hakki_dk: shift.Mola_Hakki_Dk || 0
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleToggleStatus = async (door) => {
-    const isActive = door.Durum === undefined || door.Durum === null ? true : door.Durum;
+  const handleToggleStatus = async (shift) => {
+    const isActive = shift.Durum === undefined || shift.Durum === null ? true : shift.Durum;
     const yeniDurum = isActive ? 0 : 1;
     
     const uyariMesaji = isActive 
-        ? `"${door.Kapi_Adi}" isimli kapıyı PASİFE ALMAK istediğinize emin misiniz? (Bu kapıya ait tüm geçiş yetkileri silinecektir!)`
-        : `"${door.Kapi_Adi}" isimli kapıyı tekrar AKTİFLEŞTİRMEK istediğinize emin misiniz?`;
+        ? `"${shift.Vardiya_Adi}" isimli vardiyayı PASİFE ALMAK istediğinize emin misiniz?`
+        : `"${shift.Vardiya_Adi}" isimli vardiyayı tekrar AKTİFLEŞTİRMEK istediğinize emin misiniz?`;
 
     if (window.confirm(uyariMesaji)) {
       try {
-        await api.patch(`/doors/${door.ID}/status`, { durum: yeniDurum, kapi_adi: door.Kapi_Adi });
-        setMessage({ text: isActive ? 'Kapı pasife alındı.' : 'Kapı aktifleştirildi.', type: 'success' });
-        fetchDoors();
+        await api.patch(`/shifts/${shift.ID}/status`, { durum: yeniDurum, vardiya_adi: shift.Vardiya_Adi });
+        setMessage({ text: isActive ? 'Vardiya pasife alındı.' : 'Vardiya aktifleştirildi.', type: 'success' });
+        fetchShifts();
       } catch (err) {
         setMessage({ text: 'İşlem başarısız oldu.', type: 'error' });
       }
@@ -169,27 +187,37 @@ function Doors() {
   const cancelEdit = () => {
     setIsEditing(false); 
     setEditId(null);
-    setFormData({ kapi_adi: '', departman: '', konum: '', kapi_turu: 'İç Geçiş' });
+    setFormData({ vardiya_adi: '', mesai_baslangic: '', mesai_bitis: '', yemek_baslangic: '', yemek_bitis: '', tolerans_dk: 0, mola_hakki_dk: 0 });
     setMessage({ text: '', type: '' });
   };
 
   // --- AG GRID SÜTUN AYARLARI ---
   const colDefs = useMemo(() => [
     { field: 'ID', headerName: 'ID', width: 90 },
-    { field: 'Kapi_Adi', headerName: 'Kapı Adı', flex: 1, minWidth: 200 },
+    { field: 'Vardiya_Adi', headerName: 'Vardiya Adı', flex: 1, minWidth: 180, cellClass: 'font-bold text-slate-800' },
     { 
-      field: 'Kapi_Turu', 
-      headerName: 'Kapı Türü', 
-      flex: 1, 
-      minWidth: 150,
-      cellRenderer: (params) => {
-        const val = params.value || 'İç Geçiş';
-        const color = val.includes('Giriş') ? 'text-blue-600' : val.includes('Çıkış') ? 'text-orange-600' : 'text-slate-600';
-        return <span className={`font-bold ${color}`}>{val}</span>;
-      }
+      headerName: 'Mesai Saatleri', 
+      valueGetter: (params) => {
+        const bas = formatTimeForInput(params.data.Mesai_Baslangic);
+        const bit = formatTimeForInput(params.data.Mesai_Bitis);
+        return `${bas} - ${bit}`;
+      },
+      width: 150 
     },
-    { field: 'Departman', headerName: 'Departman', flex: 1, minWidth: 150 },
-    { field: 'Konum', headerName: 'Konum', flex: 1, minWidth: 150 },
+    { 
+      headerName: 'Yemek Molası', 
+      valueGetter: (params) => {
+        const bas = formatTimeForInput(params.data.Yemek_Baslangic);
+        const bit = formatTimeForInput(params.data.Yemek_Bitis);
+        return (bas && bit) ? `${bas} - ${bit}` : 'Belirtilmedi';
+      },
+      width: 160 
+    },
+    { 
+      headerName: 'Esneklik', 
+      valueGetter: (params) => `Tol: ${params.data.Tolerans_Dk || 0}dk | Mola: ${params.data.Mola_Hakki_Dk || 0}dk`,
+      width: 180 
+    },
     { 
       field: 'Durum', 
       headerName: 'Durum', 
@@ -208,7 +236,6 @@ function Doors() {
       filter: false,
       cellRenderer: (params) => {
         const isActive = params.data.Durum === undefined || params.data.Durum === null ? true : params.data.Durum;
-        
         return (
           <div className="space-x-2 mt-1">
             <button 
@@ -241,14 +268,14 @@ function Doors() {
     <div className="space-y-8 relative mt-8">
       
       <div>
-        <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Kapı Tanımlama ve Yönetim</h2>
-        <p className="text-slate-500 text-sm mt-1">Sistemdeki geçiş noktalarını (kapıları) buradan ekleyebilir, düzenleyebilir veya durumlarını değiştirebilirsiniz.</p>
+        <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Vardiya ve Çalışma Saatleri</h2>
+        <p className="text-slate-500 text-sm mt-1">Sistemdeki çalışma vardiyalarını, tolerans sürelerini ve mola saatlerini buradan yönetebilirsiniz.</p>
       </div>
 
       {/* EKLEME / DÜZENLEME FORMU */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
         <h2 className="text-xl font-bold text-slate-800 mb-4">
-          {isEditing ? 'Kapı Bilgilerini Düzenle' : 'Yeni Kapı Ekle'}
+          {isEditing ? 'Vardiyayı Düzenle' : 'Yeni Vardiya Ekle'}
         </h2>
         
         {message.text && (
@@ -258,91 +285,117 @@ function Doors() {
         )}
         
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-          <div>
-            <label className="block text-xs font-bold text-slate-500 mb-1">Kapı Adı *</label>
+          
+          <div className="md:col-span-4">
+            <label className="block text-xs font-bold text-slate-500 mb-1">Vardiya Adı *</label>
             <input 
               type="text" 
-              name="kapi_adi" 
-              value={formData.kapi_adi} 
+              name="vardiya_adi" 
+              value={formData.vardiya_adi} 
               onChange={handleChange} 
-              placeholder="Örn: Ana Giriş Turnikesi"
+              placeholder="Örn: Hafta İçi Gündüz Vardiyası"
               required 
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
             />
           </div>
 
-          {/* YENİ EKLENEN KAPI TÜRÜ SEÇİMİ */}
           <div>
-            <label className="block text-xs font-bold text-slate-500 mb-1">Kapı Türü (İşlevi) *</label>
-            <select 
-              name="kapi_turu" 
-              value={formData.kapi_turu} 
-              onChange={handleChange} 
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-            >
-              <option value="İç Geçiş">İç Geçiş (Standart Kapı)</option>
-              <option value="Ana Giriş">Ana Giriş (Mesai Başlar)</option>
-              <option value="Ana Çıkış">Ana Çıkış (Mesai Biter)</option>
-              <option value="Yemekhane Giriş">Yemekhane Giriş</option>
-              <option value="Yemekhane Çıkış">Yemekhane Çıkış</option>
-              <option value="Mola / Sigara Alanı">Mola / Sigara Alanı</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-500 mb-1">Bağlı Olduğu Departman *</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Mesai Başlangıç *</label>
             <input 
-              type="text" 
-              name="departman" 
-              value={formData.departman} 
+              type="time" 
+              name="mesai_baslangic" 
+              value={formData.mesai_baslangic} 
               onChange={handleChange} 
-              placeholder="Örn: Bilgi İşlem"
               required 
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-500 mb-1">Fiziksel Konum *</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Mesai Bitiş *</label>
             <input 
-              type="text" 
-              name="konum" 
-              value={formData.konum} 
+              type="time" 
+              name="mesai_bitis" 
+              value={formData.mesai_bitis} 
               onChange={handleChange} 
-              placeholder="Örn: A Blok Zemin Kat"
               required 
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Yemek Başlangıç</label>
+            <input 
+              type="time" 
+              name="yemek_baslangic" 
+              value={formData.yemek_baslangic} 
+              onChange={handleChange} 
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Yemek Bitiş</label>
+            <input 
+              type="time" 
+              name="yemek_bitis" 
+              value={formData.yemek_bitis} 
+              onChange={handleChange} 
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Tolerans (Dakika)</label>
+            <input 
+              type="number" 
+              name="tolerans_dk" 
+              value={formData.tolerans_dk} 
+              onChange={handleChange} 
+              min="0"
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
             />
           </div>
           
-          <div className="md:col-span-4 flex justify-end space-x-3 mt-2">
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Günlük Mola Hakkı (Dakika)</label>
+            <input 
+              type="number" 
+              name="mola_hakki_dk" 
+              value={formData.mola_hakki_dk} 
+              onChange={handleChange} 
+              min="0"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
+            />
+          </div>
+
+          <div className="md:col-span-2 flex justify-end space-x-3 mt-2">
             {isEditing && (
               <button 
                 type="button" 
                 onClick={cancelEdit} 
-                className="px-6 py-2 bg-slate-200 font-bold text-slate-700 rounded-lg hover:bg-slate-300 transition-colors"
+                className="px-6 py-2 bg-slate-200 font-bold text-slate-700 rounded-lg hover:bg-slate-300 transition-colors w-full"
               >
                 İptal Et
               </button>
             )}
             <button 
               type="submit" 
-              className={`px-6 py-2 font-bold rounded-lg text-white transition-colors ${isEditing ? 'bg-orange-500 hover:bg-orange-600' : 'bg-slate-900 hover:bg-slate-800'}`}
+              className={`px-6 py-2 font-bold rounded-lg text-white transition-colors w-full ${isEditing ? 'bg-orange-500 hover:bg-orange-600' : 'bg-slate-900 hover:bg-slate-800'}`}
             >
-              {isEditing ? 'Bilgileri Güncelle' : 'Sisteme Kaydet'}
+              {isEditing ? 'Vardiyayı Güncelle' : 'Sisteme Kaydet'}
             </button>
           </div>
         </form>
       </div>
 
       {/* ARAMA VE TABLO BÖLÜMÜ */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col p-4 h-[60vh]">
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col p-4 h-[55vh]">
         
         {/* ARAMA KUTUSU */}
         <div className="mb-4 relative w-full md:w-1/3">
-          <label className="block text-xs font-bold text-slate-600 mb-1">Kapı Ara</label>
+          <label className="block text-xs font-bold text-slate-600 mb-1">Vardiya Ara</label>
           <input 
             type="text" 
-            placeholder="Kapı adı yazın..." 
+            placeholder="Vardiya adı yazın..." 
             value={arama} 
             onChange={handleSearchInputChange} 
             onBlur={() => setTimeout(() => setSuggestions([]), 200)} 
@@ -351,13 +404,13 @@ function Doors() {
           
           {suggestions.length > 0 && (
             <ul className="absolute z-50 w-full bg-white border border-slate-200 shadow-2xl max-h-56 overflow-y-auto rounded-lg mt-1 left-0 divide-y divide-slate-100">
-              {suggestions.map((door) => (
+              {suggestions.map((shift) => (
                 <li 
-                  key={door.ID} 
-                  onClick={() => handleSuggestionClick(door)}
+                  key={shift.ID} 
+                  onClick={() => handleSuggestionClick(shift)}
                   className="px-4 py-2 hover:bg-blue-50 cursor-pointer transition-colors"
                 >
-                  <span className="font-bold text-slate-800 text-sm">{door.Kapi_Adi}</span>
+                  <span className="font-bold text-slate-800 text-sm">{shift.Vardiya_Adi}</span>
                 </li>
               ))}
             </ul>
@@ -365,7 +418,7 @@ function Doors() {
         </div>
 
         <div className="p-2 text-sm font-bold text-slate-700 bg-slate-50 border-t border-x border-slate-200 rounded-t-lg">
-          Kayıtlı Kapılar ({filteredDoors.length} Kayıt)
+          Kayıtlı Vardiyalar ({filteredShifts.length} Kayıt)
         </div>
         
         <div className="flex-1 w-full h-full">
@@ -374,7 +427,7 @@ function Doors() {
             icons={customIcons} 
             alwaysMultiSort={true} 
             getRowId={(params) => params.data.ID} 
-            rowData={filteredDoors}
+            rowData={filteredShifts}
             columnDefs={colDefs}
             defaultColDef={defaultColDef}
             pagination={true}
@@ -389,4 +442,4 @@ function Doors() {
   );
 }
 
-export default Doors;
+export default Shifts;

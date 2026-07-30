@@ -1,16 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
 
-// AG Grid importları
+// AG Grid importları ve Yeni Tema Motoru
 import { AgGridReact } from 'ag-grid-react';
-import { ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
+import { ModuleRegistry, AllCommunityModule, ValidationModule, themeQuartz } from 'ag-grid-community';
 import 'ag-grid-community/styles/ag-grid.css';
-import 'ag-grid-community/styles/ag-theme-quartz.css';
-ModuleRegistry.registerModules([AllCommunityModule]);
+
+ModuleRegistry.registerModules([AllCommunityModule, ValidationModule]);
+
+// ÖZEL İKONLAR (Belirgin Filtre Simgesi)
+const customIcons = {
+  filter: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>'
+};
 
 // AG GRID TÜRKÇE DİL DESTEĞİ
 const AG_GRID_LOCALE_TR = {
-  // Filtreleme (Filter) Menüsü
   contains: 'İçerir',
   notContains: 'İçermez',
   startsWith: 'Şununla Başlar',
@@ -20,19 +24,13 @@ const AG_GRID_LOCALE_TR = {
   blank: 'Boş Olanlar',
   notBlank: 'Boş Olmayanlar',
   empty: 'Seçiniz',
-
-  // Arama Kutusu ve Butonlar
   filterOoo: 'Filtrele...',
   applyFilter: 'Uygula',
   clearFilter: 'Temizle',
   resetFilter: 'Sıfırla',
   cancelFilter: 'İptal',
-  
-  // Mantıksal Operatörler
   andCondition: 'VE',
   orCondition: 'VEYA',
-
-  // Sayfalama (Pagination)
   page: 'Sayfa',
   more: 'Daha',
   to: '-',
@@ -54,22 +52,22 @@ function SystemLogs() {
   const [logs, setLogs] = useState([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [loading, setLoading] = useState(false);
+  
+  // ARAMA ÖNERİLERİ İÇİN STATE
+  const [suggestions, setSuggestions] = useState([]);
 
-  // --- AG GRID SÜTUN AYARLARI ---
-  const [colDefs] = useState([
+  // --- AG GRID SÜTUN AYARLARI (useMemo İle Sabitlendi) ---
+  const colDefs = useMemo(() => [
     { 
       field: 'Tarih', 
       headerName: 'Tarih / Saat', 
       width: 170, 
-      filter: true,
       cellRenderer: (params) => new Date(params.value).toLocaleString('tr-TR')
     },
-
     { 
       field: 'Islemi_Yapan', 
       headerName: 'İşlemi Yapan', 
       width: 150, 
-      filter: true,
       cellRenderer: (params) => (
         <span className="font-bold text-blue-600">{params.value || 'Sistem'}</span>
       )
@@ -78,21 +76,57 @@ function SystemLogs() {
       field: 'Islem_Tipi', 
       headerName: 'İşlem Tipi', 
       width: 150, 
-      filter: true,
       cellRenderer: (params) => (
         <span className="font-bold text-slate-700">{params.value}</span>
       )
     },
-    { field: 'Personel_Ad', headerName: 'Personel Adı', width: 200, filter: true },
-    { field: 'Sicil_No', headerName: 'Sicil No', width: 130, filter: true },
-    { field: 'Detay', headerName: 'Detay',  filter: true, flex: 1,minWidth: 200 }
-  ]);
+    { field: 'Personel_Ad', headerName: 'Personel Adı', width: 200 },
+    { field: 'Sicil_No', headerName: 'Sicil No', width: 130 },
+    { field: 'Detay', headerName: 'Detay', flex: 1, minWidth: 200 }
+  ], []);
 
-  const defaultColDef = {
+  const defaultColDef = useMemo(() => ({
     filter: true,
+    sortable: true, // SIRALAMA AKTİF
     resizable: true,
     cellStyle: { borderRight: '1px solid #cbd5e1' },
     headerClass: 'border-r border-slate-300'
+  }), []);
+
+  // --- OTOMATİK TAMAMLAMA VE TEKRARLARI GİZLEME ---
+  const handleSearchInputChange = async (e) => {
+    const value = e.target.value;
+    setFilters({ ...filters, arama: value });
+
+    if (value.length >= 2) {
+      try {
+        const response = await api.get('/system-logs', { params: { arama: value } });
+        
+        // Aynı personelin birden fazla logu varsa menüde sadece 1 kez göstermek için:
+        const uniqueLogs = [];
+        const seenNames = new Set();
+        
+        response.data.forEach(log => {
+          const identifier = log.Personel_Ad || log.Sicil_No;
+          if (identifier && !seenNames.has(identifier)) {
+            seenNames.add(identifier);
+            uniqueLogs.push(log);
+          }
+        });
+
+        setSuggestions(uniqueLogs.slice(0, 6)); // En fazla 6 farklı sonuç göster
+      } catch (err) {
+        console.error("Öneriler çekilemedi:", err);
+      }
+    } else {
+      setSuggestions([]);
+    }
+  };
+
+  const handleSuggestionClick = (log) => {
+    // Listeden tıklanan personelin adını veya sicilini arama kutusuna yazdır
+    setFilters({ ...filters, arama: log.Personel_Ad || log.Sicil_No });
+    setSuggestions([]);
   };
 
   const handleFetchData = async (e) => {
@@ -109,27 +143,22 @@ function SystemLogs() {
     }
   };
 
-  // --- YENİ EKLENEN: SESSİZ CANLI GÜNCELLEME (REAL-TIME POLLING) ---
+  // --- SESSİZ CANLI GÜNCELLEME (REAL-TIME POLLING) ---
   useEffect(() => {
     let interval;
-    
-    // Sadece tablo ekrandaysa (arama yapıldıysa) arka planda çalışmaya başla
     if (hasSearched) {
       interval = setInterval(async () => {
         try {
-          // DİKKAT: Burada setLoading(true) kullanmıyoruz ki tablo titremesin!
           const response = await api.get('/system-logs', { params: filters });
-          setUsers(response.data); // Sadece veriyi sessizce ez
+          setLogs(response.data); 
         } catch (err) {
           console.error("Arka plan güncelleme hatası:", err);
         }
-      }, 3000); // 3000 milisaniye = 3 saniyede bir yeniler (İstersen 5000 yapabilirsin)
+      }, 3000); 
     }
-
-    // Komponentten çıkıldığında veya filtre değiştiğinde eski sayacı temizle
     return () => clearInterval(interval);
   }, [hasSearched, filters]); 
-  // ----------------------------------------------------------------
+
   return (
     <div className="space-y-4">
       {/* FİLTRE MENÜSÜ */}
@@ -142,10 +171,35 @@ function SystemLogs() {
           <label className="block text-xs font-bold text-slate-600 mb-1">Bitiş Tarihi</label>
           <input type="date" value={filters.bitis} onChange={(e) => setFilters({...filters, bitis: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
-        <div>
+        
+        {/* YENİ EKLENEN AÇILIR MENÜLÜ ARAMA KUTUSU */}
+        <div className="relative">
           <label className="block text-xs font-bold text-slate-600 mb-1">Ad Soyad / Sicil No</label>
-          <input type="text" placeholder="Sicil veya isim ara..." value={filters.arama} onChange={(e) => setFilters({...filters, arama: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+          <input 
+            type="text" 
+            placeholder="Sicil veya isim ara..." 
+            value={filters.arama} 
+            onChange={handleSearchInputChange} 
+            onBlur={() => setTimeout(() => setSuggestions([]), 200)} 
+            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all" 
+          />
+          
+          {suggestions.length > 0 && (
+            <ul className="absolute z-50 w-full bg-white border border-slate-200 shadow-2xl max-h-56 overflow-y-auto rounded-lg mt-1 left-0 divide-y divide-slate-100">
+              {suggestions.map((log) => (
+                <li 
+                  key={log.ID || Math.random()} 
+                  onClick={() => handleSuggestionClick(log)}
+                  className="px-4 py-2 hover:bg-blue-50 cursor-pointer transition-colors flex flex-col"
+                >
+                  <span className="font-bold text-slate-800 text-sm">{log.Personel_Ad || 'Bilinmeyen Personel'}</span>
+                  <span className="text-slate-500 text-xs">Sicil: {log.Sicil_No || 'Belirtilmemiş'}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
+
         <div className="flex items-end">
           <button type="submit" disabled={loading} className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-lg transition-colors">
             {loading ? 'Yükleniyor...' : 'Kayıtları Getir'}
@@ -160,11 +214,15 @@ function SystemLogs() {
             Arama Sonuçları ({logs.length} Kayıt)
           </div>
           
-          <div className="ag-theme-quartz flex-1 w-full h-full">
+          <div className="flex-1 w-full h-full">
             <AgGridReact
+              theme={themeQuartz} 
+              icons={customIcons} 
+              alwaysMultiSort={true} 
+              getRowId={(params) => params.data.ID} // SATIR KİMLİK BELİRLEYİCİ
               rowData={logs}
               columnDefs={colDefs}
-              defaultColDef={defaultColDef} // <-- BURAYA EKLENDİ
+              defaultColDef={defaultColDef}
               pagination={true}
               localeText={AG_GRID_LOCALE_TR}
               paginationPageSize={50}

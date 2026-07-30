@@ -6,6 +6,8 @@ import Settings from './pages/Settings';
 import HesapEkle from './pages/HesapEkle';
 import Dashboard from './pages/Dashboard';
 import PersonnelHub from './pages/PersonnelHub';
+import Shifts from './pages/Shifts';
+import Reports from './pages/Reports';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'));
@@ -37,17 +39,23 @@ function App() {
       
       {/* Üst Menü (Navbar) */}
       <nav className="bg-slate-900 px-6 py-4 shadow-lg flex justify-between items-center">
-        <div className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 tracking-tighter">
-          GKS PANEL
+        <div>
+          <Link to ="/" className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 trackin-tighter">GKS PANEL
+        </Link>
         </div>
         
         <div className="flex items-center space-x-8">
           <Link to="/" className="text-slate-300 hover:text-cyan-400 transition-colors font-semibold tracking-wide">Ana Sayfa</Link>
+          
           <Link to="/logs" className="text-slate-300 hover:text-cyan-400 transition-colors font-semibold tracking-wide">Loglar</Link>
           
-          {/* Tasarımı düzeltilmiş Personel Yönetimi Linki */}
           <Link to="/personel" className="text-slate-300 hover:text-cyan-400 transition-colors font-semibold tracking-wide">Personel Yönetimi</Link>          
           
+          <Link to="/shifts" className="text-slate-300 hover:text-cyan-400 transition-colors font-semibold tracking-wide">Vardiya</Link>          
+
+
+          <Link to="/reports" className="text-slate-300 hover:text-cyan-400 transition-colors font-semibold tracking-wide">Puantaj Raporu</Link>          
+
           {userRole === 'admin' && (
             <Link to="/hesap-ekle" className="text-slate-300 hover:text-cyan-400 transition-colors font-semibold tracking-wide">Yeni Hesap</Link>
           )}
@@ -71,6 +79,8 @@ function App() {
           <Route path="/personel" element={<PersonnelHub />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/hesap-ekle" element={<HesapEkle />} />
+          <Route path="/shifts" element={<Shifts />} />
+          <Route path="/reports" element={<Reports />} />
           
           {/* Hatalı URL girilirse Ana Sayfaya atacak kural en sona alındı */}
           <Route path="*" element={<Navigate to="/" />} />
