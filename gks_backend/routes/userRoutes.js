@@ -3,6 +3,7 @@ const router = express.Router();
 const { sql } = require('../db');
 const { verifyToken, verifyAdmin } = require('../middlewares/auth');
 const { addSystemLog } = require('../utils/logger');
+const socket = require('../utils/socket');
 
 // Generate Unique Sistem ID Yardımcı Fonksiyonu
 const generateUniqueSistemId = async () => {
@@ -70,6 +71,8 @@ router.post('/users/bulk/shift', verifyToken, async (req, res) => {
 
         const logHedef = hedef_turu === 'Tumu' ? 'Sistemdeki Tüm Personeller' : hedef_deger;
         await addSystemLog(aktifKullanici, 'TOPLU VARDİYA', logHedef, '', `${hedef_turu}: ${logHedef} kriterine uyan ${affectedUsers.length} personele "${shiftName}" atandı.`);
+        socket.getIO().emit('users_updated');
+        socket.getIO().emit('system_updated');
         res.json({ success: true, message: `${affectedUsers.length} personel için vardiya güncellendi.` });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Toplu atama başarısız oldu.' });
@@ -115,7 +118,8 @@ router.post('/users/bulk/doors', verifyToken, async (req, res) => {
         const yetkiDurumu = doorIds?.length > 0 ? `${doorIds.length} adet kapıya yetki verildi.` : 'Tüm yetkiler kaldırıldı.';
         const logHedef = hedef_turu === 'Tumu' ? 'Sistemdeki Tüm Personeller' : hedef_deger;
         await addSystemLog(aktifKullanici, 'TOPLU YETKİ', logHedef, '', `${hedef_turu}: ${logHedef} grubundaki ${affectedUsers.length} personele işlem yapıldı. ${yetkiDurumu}`);
-        
+        socket.getIO().emit('users_updated');
+        socket.getIO().emit('system_updated');      
         res.json({ success: true, message: `${affectedUsers.length} personel için yetkiler başarıyla güncellendi.` });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Toplu yetkilendirme başarısız oldu.' });
@@ -158,7 +162,9 @@ router.post('/users/bulk/status', verifyToken, async (req, res) => {
         const islem = durum === 1 ? 'TOPLU İŞE ALIM' : 'TOPLU İŞTEN ÇIKIŞ';
         const logHedef = hedef_turu === 'Tumu' ? 'Sistemdeki Tüm Personeller' : hedef_deger;
         await addSystemLog(aktifKullanici, islem, logHedef, '', `${hedef_turu}: ${logHedef} grubundaki ${affectedUsers.length} personelin durumu güncellendi.`);
-        
+        socket.getIO().emit('users_updated');
+        socket.getIO().emit('system_updated');
+
         res.json({ success: true, message: `${affectedUsers.length} personelin sistem durumu başarıyla güncellendi.` });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Toplu durum işlemi başarısız oldu.' });
@@ -229,8 +235,9 @@ router.post('/users', verifyToken, async (req, res) => {
             INSERT INTO Users (Ad_Soyad, RFID_Kart_No, TC_Kimlik, Sicil_No, Sirket, Departman, Gorev, Durum, Sistem_ID, Ise_Giris_Tarihi) 
             VALUES (@ad, @rfid, @tc, @sicil, @sirket, @departman, @gorev, 1, @sistemId, @ise_giris)
         `);
-        
         await addSystemLog(aktifKullanici, 'YENİ KAYIT', ad_soyad, sicil, `Sisteme yeni eklendi. Departman: ${departman || '-'}`);
+        socket.getIO().emit('users_updated');
+        socket.getIO().emit('system_updated');
         res.json({ success: true, message: 'Personel başarıyla eklendi.' });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Kayıt Hatası: ' + err.message });
@@ -281,6 +288,8 @@ router.put('/users/:id', verifyToken, async (req, res) => {
         `);
 
         await addSystemLog(aktifKullanici, 'GÜNCELLEME', ad_soyad, sicil, 'Personel bilgileri güncellendi.');
+        socket.getIO().emit('users_updated');
+        socket.getIO().emit('system_updated');
         res.json({ success: true, message: 'Personel bilgileri güncellendi.' });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Güncelleme hatası.' });
@@ -313,6 +322,8 @@ router.patch('/users/:id/status', verifyToken, async (req, res) => {
                 WHERE ID = @id
             `);
             await addSystemLog(aktifKullanici, 'TEKRAR İŞE ALIM', ad_soyad, sicil, 'Personel tekrar aktifleştirildi.');
+            socket.getIO().emit('users_updated');
+            socket.getIO().emit('system_updated');
             res.json({ success: true, message: 'Personel aktifleştirildi.' });
         }
     } catch (err) {
@@ -359,7 +370,8 @@ router.post('/users/:id/doors', verifyToken, async (req, res) => {
 
         const yetkiDurumu = (doorIds && doorIds.length > 0) ? `${doorIds.length} adet aktif kapıya yetki verildi.` : 'Tüm aktif kapı yetkileri KALDIRILDI.';
         await addSystemLog(aktifKullanici, 'YETKİ GÜNCELLEME', user.Ad_Soyad, user.Sicil_No, yetkiDurumu);
-
+        socket.getIO().emit('users_updated');
+        socket.getIO().emit('system_updated');
         res.json({ success: true, message: 'Yetkiler başarıyla kaydedildi.' });
     } catch (err) {
         console.error("Yetki atama hatası:", err);
@@ -420,7 +432,8 @@ router.post('/users/:id/shift', verifyToken, async (req, res) => {
         } else {
             await addSystemLog(aktifKullanici, 'VARDİYA İPTALİ', user.Ad_Soyad, user.Sicil_No, `Personelin vardiya ataması kaldırıldı.`);
         }
-
+        socket.getIO().emit('users_updated');
+        socket.getIO().emit('system_updated');
         res.json({ success: true, message: 'Vardiya ataması başarıyla güncellendi.' });
     } catch (err) {
         console.error("Vardiya atama hatası:", err);

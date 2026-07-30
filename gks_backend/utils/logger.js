@@ -1,4 +1,5 @@
 const { sql } = require('../db');
+const socket = require('./socket');
 
 const addSystemLog = async (islemiYapan, islemTipi, personelAd, sicil, detay) => {
     try {
@@ -12,6 +13,7 @@ const addSystemLog = async (islemiYapan, islemTipi, personelAd, sicil, detay) =>
             INSERT INTO SystemLogs (Islemi_Yapan, Islem_Tipi, Personel_Ad, Sicil_No, Detay) 
             VALUES (@yapan, @islem, @kisi, @sicil, @detay)
         `);
+        socket.getIO().emit('new_system_log');
     } catch (err) {
         console.error("Sistem logu yazılamadı:", err);
     }
@@ -28,6 +30,7 @@ const addDoorLog = async (islemiYapan, islemTipi, kapiAdi, detay) => {
             INSERT INTO DoorLogs (Islemi_Yapan, Islem_Tipi, Kapi_Adi, Detay) 
             VALUES (@yapan, @islem, @kapi, @detay)
         `);
+        socket.getIO().emit('new_door_log');
     } catch (err) {
         console.error("Kapı logu yazılamadı:", err);
     }

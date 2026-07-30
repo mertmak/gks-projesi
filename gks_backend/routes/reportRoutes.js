@@ -2,26 +2,9 @@ const express = require('express');
 const router = express.Router();
 const { sql } = require('../db');
 const { verifyToken } = require('../middlewares/auth');
+const { parseTimeToMinutes } = require('../utils/dateHelper');
 
 // GÜNCELLENEN YARDIMCI FONKSİYON: Saat bilgisini dakikaya çevirir
-// Node.js'in saat dilimi (Timezone) eklemesini engellemek için sadece saati ve dakikayı alıyoruz.
-const parseTimeToMinutes = (timeObj) => {
-    if (!timeObj) return 0;
-    
-    // Eğer bir Date nesnesi ise (SQL'den gelmişse)
-    if (timeObj instanceof Date) {
-        // .getUTCHours() KULLANMIYORUZ! UTC'ye çevirmeden, doğrudan saati string'den çekiyoruz
-        const timeStr = timeObj.toISOString().split('T')[1].substring(0, 5);
-        const parts = timeStr.split(':');
-        return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
-    }
-    
-    // Eğer '09:00' veya '09:00:00' şeklinde düz bir string gelmişse
-    const parts = timeObj.toString().split(':');
-    return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
-};
-
-// GÜNLÜK PUANTAJ VE MOLA HESAPLAMA MOTORU
 // GÜNLÜK PUANTAJ VE MOLA HESAPLAMA MOTORU
 router.get('/reports/daily-attendance', verifyToken, async (req, res) => {
     const targetDate = req.query.tarih || new Date().toISOString().split('T')[0];
@@ -74,7 +57,7 @@ router.get('/reports/daily-attendance', verifyToken, async (req, res) => {
         const allLogs = logResult.recordset;
 
         // VERİYİ İŞLEME
-const reportData = userResult.recordset.map(row => {
+        const reportData = userResult.recordset.map(row => {
             let durumText = 'Normal';
             let gecKalmaDk = 0; let erkenCikmaDk = 0; let toplamYemekDk = 0; let toplamMolaDk = 0;
 
@@ -132,7 +115,6 @@ const reportData = userResult.recordset.map(row => {
                     durumText = durumText === 'Geç Kaldı' ? 'Geç Kaldı / Çıkış Yok' : 'Çıkış Yok';
                 }
             }
-
             // --- MOLA VE YEMEK SÜRESİ HESABI ---
             const userLogs = allLogs.filter(l => l.RFID_Kart_No === row.RFID_Kart_No);
             let yemekBaslangicTarihi = null;
@@ -180,4 +162,5 @@ const reportData = userResult.recordset.map(row => {
         res.status(500).json({ success: false, message: 'Puantaj hesaplanamadı.' });
     }
 });
+
 module.exports = router;

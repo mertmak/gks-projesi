@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import Users from './Users';
 import PersonnelOperations from './PersonnelOperations';
-import BulkOperations from './BulkOperations'; // YENİ EKLENDİ
+import BulkOperations from './BulkOperations';
 import SystemLogs from './SystemLogs';
 import Doors from './Doors';
 import DoorLogs from './DoorLogs';
@@ -26,7 +26,6 @@ function PersonnelHub() {
           Bireysel İşlem
         </button>
 
-        {/* YENİ EKLENEN SEKME: TOPLU İŞLEM */}
         <button onClick={() => setActiveTab('toplu-islem')} className={`px-5 py-3 font-bold text-sm transition-colors border-b-2 whitespace-nowrap ${activeTab === 'toplu-islem' ? 'border-amber-500 text-amber-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
           Toplu İşlem Merkezi
         </button>
@@ -46,7 +45,7 @@ function PersonnelHub() {
       <div className="pb-8">
         {activeTab === 'personel' && <Users />}
         {activeTab === 'islem-merkezi' && <PersonnelOperations />}
-        {activeTab === 'toplu-islem' && <BulkOperations />} {/* YENİ EKLENDİ */}
+        {activeTab === 'toplu-islem' && <BulkOperations />}
         {activeTab === 'ik-log' && <SystemLogs />}
         {activeTab === 'kapilar' && <Doors />}
         {activeTab === 'kapi-log' && <DoorLogs />}

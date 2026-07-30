@@ -1,21 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
+import { customIcons, AG_GRID_LOCALE_TR } from '../utils/constants';
+import { socket } from '../api/socket';
 
 import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule, ValidationModule, themeQuartz } from 'ag-grid-community';
 import 'ag-grid-community/styles/ag-grid.css';
 
 ModuleRegistry.registerModules([AllCommunityModule, ValidationModule]);
-
-const customIcons = {
-  filter: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>'
-};
-
-const AG_GRID_LOCALE_TR = {
-  contains: 'İçerir', notContains: 'İçermez', startsWith: 'Şununla Başlar', endsWith: 'Şununla Biter', equals: 'Eşittir', notEqual: 'Eşit Değildir', blank: 'Boş Olanlar', notBlank: 'Boş Olmayanlar', empty: 'Seçiniz',
-  filterOoo: 'Filtrele...', applyFilter: 'Uygula', clearFilter: 'Temizle', resetFilter: 'Sıfırla', cancelFilter: 'İptal',
-  andCondition: 'VE', orCondition: 'VEYA', page: 'Sayfa', more: 'Daha', to: '-', of: '/', next: 'İleri', last: 'Son', first: 'İlk', previous: 'Geri', loadingOoo: 'Yükleniyor...', noRowsToShow: 'Gösterilecek kayıt bulunamadı.'
-};
 
 function Users() {
   const now = new Date();
@@ -266,7 +258,17 @@ function Users() {
   // AG GRID SÜTUNLARI
   const colDefs = useMemo(() => [
     { field: 'Sicil_No', headerName: 'Sicil No', width: 120, filter: true },
-    { field: 'Ad_Soyad', headerName: 'Ad Soyad', flex: 1, minWidth: 180, filter: true },
+    { 
+      field: 'Ad_Soyad', 
+      headerName: 'Ad Soyad', 
+      flex: 1, 
+      minWidth: 180, 
+      filter: true,
+      // YENİ: Türkçe ve büyük/küçük harf duyarsız akıllı sıralama
+  comparator: (valueA, valueB) => {
+    return (valueA || '').localeCompare(valueB || '', 'tr', { sensitivity: 'base' });
+  }
+},
     { field: 'Departman', headerName: 'Departman', flex: 1, minWidth: 160, filter: true },
     { 
       field: 'Durum', headerName: 'Durum', width: 100,
@@ -295,15 +297,22 @@ function Users() {
     headerClass: 'border-r border-slate-300' 
   }), []);
 
+// --- YENİ YAPI: SOCKET.IO İLE ANLIK GÜNCELLEME ---
   useEffect(() => {
-    let interval;
-    if (hasSearched) {
-      interval = setInterval(async () => {
-        try { const response = await api.get('/users', { params: filters }); setUsers(response.data); } catch (err) {}
-      }, 3000); 
-    }
-    return () => clearInterval(interval);
-  }, [hasSearched, filters]); 
+    const refreshUsers = async () => {
+      if (!hasSearched) return;
+      try { 
+        const response = await api.get('/users', { params: filters }); 
+        setUsers(response.data); 
+      } catch (err) {}
+    };
+
+    socket.on('users_updated', refreshUsers);
+
+    return () => {
+      socket.off('users_updated', refreshUsers);
+    };
+  }, [hasSearched, filters]);
 
   return (
     <div className="space-y-6 relative mt-4">

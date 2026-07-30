@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { sql } = require('../db');
 const { verifyToken, verifyAdmin } = require('../middlewares/auth');
+const { formatTimeStr, formatSqlDate } = require('../utils/dateHelper');
+const socket = require('../utils/socket');
 
 const isimler = ['Ali', 'Ayşe', 'Fatma', 'Ahmet', 'Mehmet', 'Can', 'Elif', 'Burak', 'Zeynep', 'Emre', 'Cem', 'Deniz', 'Eda', 'Ozan', 'Gökhan'];
 const soyisimler = ['Yılmaz', 'Demir', 'Kaya', 'Çelik', 'Şahin', 'Öztürk', 'Arslan', 'Doğan', 'Kılıç', 'Yıldız', 'Özdemir', 'Çetin', 'Koç'];
@@ -10,21 +12,14 @@ const departmanlar = ['İşletme', 'Bilgi İşlem', 'İnsan Kaynakları', 'Muhas
 // SADECE RAKAMLARDAN OLUŞAN VERİ ÜRETİMİ
 const generateRandomUser = (index) => {
     const adSoyad = index === 0 ? 'Mert Mak' : `${isimler[Math.floor(Math.random() * isimler.length)]} ${soyisimler[Math.floor(Math.random() * soyisimler.length)]}`;
-    const rfid = `${Math.floor(1000000000 + Math.random() * 9000000000)}`; // 10 Haneli Saf Sayı
-    const tc = `1${Math.floor(100000000 + Math.random() * 900000000)}`; // 11 Haneli Saf Sayı
-    const sicil = `${10000 + Math.floor(Math.random() * 89999)}`; // 5 Haneli Saf Sayı
+    
+    // YENİ KURALLAR: Hepsi tam istenen uzunlukta saf sayılar üretiyor
+    const rfid = `${10000000000 + Math.floor(Math.random() * 89999999999)}`; // Tam 11 Hane
+    const tc = `${10000000000 + Math.floor(Math.random() * 89999999999)}`;   // Tam 11 Hane
+    const sicil = `${10000 + Math.floor(Math.random() * 89999)}`;            // Tam 5 Hane
+    
     const departman = index === 0 ? 'İşletme' : departmanlar[Math.floor(Math.random() * departmanlar.length)];
     return { adSoyad, rfid, tc, sicil, departman };
-};
-
-const formatTimeStr = (dbTime) => {
-    if (!dbTime) return null;
-    if (dbTime instanceof Date) return dbTime.toISOString().split('T')[1].substring(0, 5);
-    return dbTime.toString().substring(0, 5);
-};
-const formatSqlDate = (d) => {
-    const pad = n => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
 
 router.post('/seeder/run', verifyToken, verifyAdmin, async (req, res) => {
@@ -162,7 +157,10 @@ router.post('/seeder/run', verifyToken, verifyAdmin, async (req, res) => {
                 basariliKayit += chunk.length;
             }
         }
-        
+        socket.getIO().emit('users_updated');
+        socket.getIO().emit('doors_updated');
+        socket.getIO().emit('system_updated');
+        socket.getIO().emit('new_rfid_log'); 
         res.json({ success: true, message: `İşlem tamamlandı! ${basariliKayit} adet log başarıyla işlendi.` });
     } catch (err) {
         console.error(err);

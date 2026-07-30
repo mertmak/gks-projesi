@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { sql } = require('../db');
 const { verifyToken } = require('../middlewares/auth');
+const socket = require('../utils/socket');
 
 // TÜM VARDİYALARI GETİR
 router.get('/shifts', verifyToken, async (req, res) => {
@@ -35,6 +36,7 @@ router.post('/shifts', verifyToken, async (req, res) => {
             INSERT INTO Vardiyalar (Vardiya_Adi, Mesai_Baslangic, Mesai_Bitis, Yemek_Baslangic, Yemek_Bitis, Tolerans_Dk, Mola_Hakki_Dk, Calisma_Gunleri, Durum)
             VALUES (@ad, @baslangic, @bitis, @yBaslangic, @yBitis, @tolerans, @mola, @gunler, 1)
         `);
+        socket.getIO().emit('shifts_updated');
         res.json({ success: true, message: 'Vardiya başarıyla eklendi.' });
     } catch (err) {
         console.error("Vardiya ekleme hatası:", err);
@@ -66,6 +68,7 @@ router.put('/shifts/:id', verifyToken, async (req, res) => {
                 Tolerans_Dk = @tolerans, Mola_Hakki_Dk = @mola, Calisma_Gunleri = @gunler 
             WHERE ID = @id
         `);
+        socket.getIO().emit('shifts_updated');
         res.json({ success: true, message: 'Vardiya başarıyla güncellendi.' });
     } catch (err) {
         console.error("Vardiya güncelleme hatası:", err);
@@ -82,6 +85,7 @@ router.patch('/shifts/:id/status', verifyToken, async (req, res) => {
         request.input('durum', sql.Bit, durum);
         
         await request.query(`UPDATE Vardiyalar SET Durum = @durum WHERE ID = @id`);
+        socket.getIO().emit('shifts_updated');
         res.json({ success: true, message: 'Durum güncellendi.' });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Durum güncellenemedi.' });

@@ -1,211 +1,235 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import api from '../api/axios';
-
-// Saat verisini formatlamak için yardımcı fonksiyon
-const extractTime = (val) => {
-  if (!val) return '-';
-  if (typeof val === 'string' && val.includes('T')) {
-    return val.split('T')[1].substring(0, 5);
-  }
-  return val.substring(0, 5); 
-};
+import { Link } from 'react-router-dom';
+import { socket } from '../api/socket';
 
 function Dashboard() {
+  const [stats, setStats] = useState({
+    AktifPersonel: 0,
+    BugunGecis: 0,
+    YetkisizGiris: 0,
+    AktifKapi: 0
+  });
+  const [recentLogs, setRecentLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  
-  // Sistem Özet Verileri
-  const [summary, setSummary] = useState({ BugunGecis: 0, AktifPersonel: 0, YetkisizGiris: 0 });
-  
-  // Puantaj Motorundan Gelen Akıllı Veriler
-  const [gecKalanlar, setGecKalanlar] = useState([]);
-  const [molaAsanlar, setMolaAsanlar] = useState([]);
-  const [iceridekiler, setIceridekiler] = useState([]);
 
+ // --- YENİ YAPI: SOCKET.IO İLE ANLIK GÜNCELLEME ---
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
-        const today = new Date().toISOString().split('T')[0];
-        
-        // 1. Hem sistem özetini hem de bugünün puantajını aynı anda çekiyoruz
-        const [summaryRes, attendanceRes] = await Promise.all([
-          api.get('/dashboard/summary'),
-          api.get(`/reports/daily-attendance?tarih=${today}`)
-        ]);
-
-        if (summaryRes.data) setSummary(summaryRes.data);
-
-        if (attendanceRes.data) {
-          const attendance = attendanceRes.data;
-
-          // Geç Kalanları Filtrele
-          setGecKalanlar(attendance.filter(a => a.Gec_Kalma_Dk > 0));
-          
-          // Mola Sınırını Aşanları Filtrele
-          setMolaAsanlar(attendance.filter(a => a.Mola_Asimi_Dk > 0));
-          
-          // Şu an İçeride Olanları Filtrele (Giriş yapmış ama çıkış yapmamış)
-          setIceridekiler(attendance.filter(a => a.Ilk_Giris && !a.Son_Cikis));
+        const response = await api.get('/dashboard/summary');
+        if (response.data.success) {
+            setStats(response.data.stats);
+            setRecentLogs(response.data.recentLogs);
         }
       } catch (err) {
-        console.error("Dashboard verileri çekilirken hata oluştu:", err);
+        console.error("Dashboard verileri çekilemedi.", err);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchDashboardData();
-    
-    // Verileri her 1 dakikada bir otomatik yenile (Canlı Dashboard Hissi)
-    const interval = setInterval(fetchDashboardData, 60000);
-    return () => clearInterval(interval);
+    fetchDashboardData(); // Sayfa açıldığında ilk veriyi çek
+
+    // Yeni bir geçiş olduğunda, personel/kapı eklendiğinde Dashboard'u yenile
+    socket.on('new_rfid_log', fetchDashboardData);
+    socket.on('system_updated', fetchDashboardData); 
+
+    return () => {
+      socket.off('new_rfid_log', fetchDashboardData);
+      socket.off('system_updated', fetchDashboardData);
+    };
   }, []);
 
+  const formatDate = (dateString) => {
+    if (!dateString) return '-';
+    const d = new Date(dateString);
+    return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  };
+
   if (loading) {
-    return <div className="mt-20 text-center font-bold text-slate-500 animate-pulse">Sistem verileri analiz ediliyor, lütfen bekleyin...</div>;
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="flex flex-col items-center">
+          <span className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></span>
+          <span className="mt-4 font-bold text-slate-500 animate-pulse">Sistem Verileri Yükleniyor...</span>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="mt-8 space-y-8 animate-fade-in-up pb-10">
-      <div>
-        <h2 className="text-3xl font-black text-slate-800 tracking-tight">Kontrol Paneli</h2>
-        <p className="text-slate-500 mt-1 font-medium">Sisteminizin bugünkü genel durumu ve anlık personel hareketleri.</p>
+    <div className="space-y-6 animate-fade-in-up pb-10">
+      
+      {/* KARŞILAMA ALANI */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-r from-slate-900 to-slate-800 p-8 rounded-2xl shadow-lg text-white">
+        <div>
+          <h1 className="text-3xl font-black tracking-tight">Sisteme Hoş Geldiniz</h1>
+          <p className="text-slate-300 mt-2 text-sm">GKS<span className="text-blue-400 font-bold">PRO</span> - Kurumsal Personel Devam ve Geçiş Kontrol Sistemi</p>
+        </div>
+        <div className="text-right">
+          <p className="text-sm font-bold text-slate-400">Tarih</p>
+          <p className="text-xl font-bold">{new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' })}</p>
+        </div>
       </div>
 
-      {/* --- ÜST KISIM: İSTATİSTİK KARTLARI --- */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-          <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">Toplam Personel</div>
-          <div className="text-4xl font-black text-slate-800">{summary.AktifPersonel}</div>
-          <div className="text-slate-400 text-xs font-bold mt-2">Sisteme kayıtlı aktif çalışan</div>
-        </div>
+      {/* İSTATİSTİK WIDGET KARTLARI */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-blue-200 bg-blue-50/30">
-          <div className="text-blue-600 text-xs font-bold uppercase tracking-wider mb-2">Anlık İçeridekiler</div>
-          <div className="text-4xl font-black text-blue-700">{iceridekiler.length}</div>
-          <div className="text-blue-500 text-xs font-bold mt-2">Giriş yapıp henüz çıkmayanlar</div>
+        {/* Personel Kartı */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center group transition-all hover:border-blue-300 hover:shadow-md">
+          <div className="w-14 h-14 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
+            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+          </div>
+          <div>
+            <p className="text-sm font-bold text-slate-500">Aktif Personel</p>
+            <h3 className="text-2xl font-black text-slate-800">{stats.AktifPersonel} <span className="text-sm font-normal text-slate-400">Kişi</span></h3>
+          </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-orange-200 bg-orange-50/30">
-          <div className="text-orange-600 text-xs font-bold uppercase tracking-wider mb-2">Geç Kalanlar</div>
-          <div className="text-4xl font-black text-orange-700">{gecKalanlar.length}</div>
-          <div className="text-orange-500 text-xs font-bold mt-2">Tolerans süresini aşanlar</div>
+        {/* Yetkisiz Giriş Kartı (Senin mevcut veritabanından) */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center group transition-all hover:border-red-300 hover:shadow-md">
+          <div className="w-14 h-14 rounded-xl bg-red-50 text-red-600 flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
+            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+          </div>
+          <div>
+            <p className="text-sm font-bold text-slate-500">Yetkisiz Deneme</p>
+            <h3 className="text-2xl font-black text-red-600">{stats.YetkisizGiris} <span className="text-sm font-normal text-slate-400">İşlem</span></h3>
+          </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-red-200 bg-red-50/30">
-          <div className="text-red-600 text-xs font-bold uppercase tracking-wider mb-2">Mola Limit Aşımı</div>
-          <div className="text-4xl font-black text-red-700">{molaAsanlar.length}</div>
-          <div className="text-red-500 text-xs font-bold mt-2">Hak edilen süreyi geçenler</div>
+        {/* Geçiş Kartı */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center group transition-all hover:border-purple-300 hover:shadow-md">
+          <div className="w-14 h-14 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
+            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+          </div>
+          <div>
+            <p className="text-sm font-bold text-slate-500">Bugünkü Geçişler</p>
+            <h3 className="text-2xl font-black text-slate-800">{stats.BugunGecis} <span className="text-sm font-normal text-slate-400">İşlem</span></h3>
+          </div>
         </div>
+
+        {/* Kapı Kartı */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center group transition-all hover:border-amber-300 hover:shadow-md">
+          <div className="w-14 h-14 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
+            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+          </div>
+          <div>
+            <p className="text-sm font-bold text-slate-500">Aktif Kapı / Turnike</p>
+            <h3 className="text-2xl font-black text-slate-800">{stats.AktifKapi} <span className="text-sm font-normal text-slate-400">Adet</span></h3>
+          </div>
+        </div>
+
       </div>
 
-      {/* --- ORTA KISIM: DİNAMİK LİSTELER --- */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {/* ALT BÖLÜM: SON HAREKETLER VE HIZLI ERİŞİM */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* LİSTE 1: GEÇ KALANLAR */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
-          <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-orange-50/30">
-            <h3 className="text-lg font-bold text-slate-800 flex items-center">
-              <span className="w-2 h-2 rounded-full bg-orange-500 mr-2"></span> Günün Geç Kalanları
-            </h3>
-            <span className="px-3 py-1 bg-white text-orange-600 rounded-full text-xs font-black shadow-sm border border-orange-100">{gecKalanlar.length} Kişi</span>
+        {/* Son Hareketler Tablosu (Sol taraf 2/3 alan) */}
+        <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+            <h3 className="font-bold text-slate-800">Canlı Geçiş İzleme</h3>
+            <span className="flex items-center text-xs font-bold text-green-600">
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse mr-2"></span> Canlı Akış
+            </span>
           </div>
-          <div className="p-0 overflow-y-auto max-h-80">
-            {gecKalanlar.length > 0 ? (
-              <ul className="divide-y divide-slate-100">
-                {gecKalanlar.map((kisi, idx) => (
-                  <li key={idx} className="p-4 hover:bg-slate-50 flex justify-between items-center transition-colors">
-                    <div>
-                      <div className="font-bold text-slate-800 text-sm">{kisi.Ad_Soyad}</div>
-                      <div className="text-xs text-slate-500">{kisi.Vardiya_Adi}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-orange-600 font-black text-sm">+{kisi.Gec_Kalma_Dk} dk</div>
-                      <div className="text-xs text-slate-400">Giriş: {extractTime(kisi.Ilk_Giris)}</div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="p-8 text-center text-slate-400 font-bold text-sm">Bugün geç kalan personel bulunmuyor. 🎉</div>
-            )}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
+                  <th className="p-4 font-bold border-b border-slate-200">Saat</th>
+                  <th className="p-4 font-bold border-b border-slate-200">Personel</th>
+                  <th className="p-4 font-bold border-b border-slate-200">Kapı Bilgisi</th>
+                  <th className="p-4 font-bold border-b border-slate-200 text-center">Durum</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {recentLogs.length > 0 ? (
+                  recentLogs.map((log, index) => (
+                    <tr key={index} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-4 text-sm font-mono text-slate-600">{formatDate(log.Zaman)}</td>
+                      <td className="p-4">
+                        <p className="text-sm font-bold text-slate-800">{log.Ad_Soyad || 'Bilinmeyen Kart'}</p>
+                        <p className="text-xs text-slate-500">{log.Sicil_No || '-'}</p>
+                      </td>
+                      <td className="p-4">
+                        <p className="text-sm font-bold text-slate-700">{log.Kapi_Adi || '-'}</p>
+                        <p className="text-xs text-slate-500">{log.Kapi_Turu || '-'}</p>
+                      </td>
+                      <td className="p-4 text-center">
+                        {log.Basarili_Mi ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-800 border border-green-200">
+                            Geçiş Onaylandı
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800 border border-red-200">
+                            Yetkisiz İşlem
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="4" className="p-8 text-center text-slate-500 text-sm font-bold">Henüz hareket bulunmuyor.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="p-3 bg-slate-50 border-t border-slate-200 text-center">
+            <Link to="/logs/doors" className="text-sm font-bold text-blue-600 hover:text-blue-800">Tüm Geçiş Loglarını Görüntüle →</Link>
           </div>
         </div>
 
-        {/* LİSTE 2: MOLA AŞANLAR */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
-          <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-red-50/30">
-            <h3 className="text-lg font-bold text-slate-800 flex items-center">
-              <span className="w-2 h-2 rounded-full bg-red-500 mr-2"></span> Mola Limitini Aşanlar
-            </h3>
-            <span className="px-3 py-1 bg-white text-red-600 rounded-full text-xs font-black shadow-sm border border-red-100">{molaAsanlar.length} Kişi</span>
+        {/* Hızlı Kısayollar (Sağ taraf 1/3 alan) */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden h-fit">
+          <div className="p-5 border-b border-slate-200 bg-slate-50">
+            <h3 className="font-bold text-slate-800">Hızlı Kısayollar</h3>
           </div>
-          <div className="p-0 overflow-y-auto max-h-80">
-            {molaAsanlar.length > 0 ? (
-              <ul className="divide-y divide-slate-100">
-                {molaAsanlar.map((kisi, idx) => (
-                  <li key={idx} className="p-4 hover:bg-slate-50 flex justify-between items-center transition-colors">
-                    <div>
-                      <div className="font-bold text-slate-800 text-sm">{kisi.Ad_Soyad}</div>
-                      <div className="text-xs text-slate-500">Kullanılan: {kisi.Toplam_Mola_Dk} dk (Hak: {kisi.Mola_Hakki_Dk})</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-red-600 font-black text-sm">+{kisi.Mola_Asimi_Dk} dk Aşım</div>
-                      <div className="text-xs text-slate-400">Departman: {kisi.Departman || '-'}</div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="p-8 text-center text-slate-400 font-bold text-sm">Mola ihlali yapan personel bulunmuyor.</div>
-            )}
+          <div className="p-4 space-y-3">
+            <Link to="/leaves" className="flex items-center justify-between p-4 rounded-xl border border-slate-100 hover:border-rose-300 hover:bg-rose-50 transition-colors group">
+              <div className="flex items-center">
+                <div className="w-10 h-10 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center mr-3 group-hover:bg-rose-600 group-hover:text-white transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                </div>
+                <span className="font-bold text-slate-700">İzin / Rapor Girişi</span>
+              </div>
+              <svg className="w-4 h-4 text-slate-400 group-hover:text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
+            </Link>
+            <Link to="/personnel/operations" className="flex items-center justify-between p-4 rounded-xl border border-slate-100 hover:border-blue-300 hover:bg-blue-50 transition-colors group">
+              <div className="flex items-center">
+                <div className="w-10 h-10 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center mr-3 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
+                </div>
+                <span className="font-bold text-slate-700">Yeni Personel Ekle</span>
+              </div>
+              <svg className="w-4 h-4 text-slate-400 group-hover:text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
+            </Link>
+
+            <Link to="/doors/permissions" className="flex items-center justify-between p-4 rounded-xl border border-slate-100 hover:border-purple-300 hover:bg-purple-50 transition-colors group">
+              <div className="flex items-center">
+                <div className="w-10 h-10 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center mr-3 group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+                </div>
+                <span className="font-bold text-slate-700">Yetki Atama Matrisi</span>
+              </div>
+              <svg className="w-4 h-4 text-slate-400 group-hover:text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
+            </Link>
+
+            <Link to="/reports" className="flex items-center justify-between p-4 rounded-xl border border-slate-100 hover:border-emerald-300 hover:bg-emerald-50 transition-colors group">
+              <div className="flex items-center">
+                <div className="w-10 h-10 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center mr-3 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                </div>
+                <span className="font-bold text-slate-700">Puantaj Raporları</span>
+              </div>
+              <svg className="w-4 h-4 text-slate-400 group-hover:text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
+            </Link>
           </div>
         </div>
 
       </div>
-
-      {/* --- ALT KISIM: SİSTEM SAĞLIĞI VE HIZLI ERİŞİM --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        
-        <div className="bg-slate-900 rounded-2xl p-6 text-white shadow-lg flex flex-col justify-center relative overflow-hidden">
-          <div className="absolute -right-10 -top-10 w-40 h-40 bg-white opacity-5 rounded-full blur-2xl"></div>
-          <h3 className="text-xl font-bold mb-2 z-10">Sistem Sağlık Özeti</h3>
-          <p className="text-slate-400 text-sm mb-6 z-10">GKS cihazlarından gelen bugünkü ham veri okumaları.</p>
-          
-          <div className="grid grid-cols-2 gap-4 z-10">
-            <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
-              <div className="text-slate-400 text-xs font-bold uppercase mb-1">Toplam Geçiş Logu</div>
-              <div className="text-2xl font-black">{summary.BugunGecis}</div>
-            </div>
-            <div className="bg-slate-800 p-4 rounded-xl border border-red-500/30">
-              <div className="text-red-400 text-xs font-bold uppercase mb-1">Yetkisiz Denemeler</div>
-              <div className="text-2xl font-black text-red-400">{summary.YetkisizGiris}</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col justify-center">
-          <h3 className="text-lg font-bold text-slate-800 mb-2">Hızlı İşlemler</h3>
-          <p className="text-slate-500 text-sm mb-6">Sık kullanılan yönetim panellerine tek tıkla ulaşın.</p>
-          
-          <div className="grid grid-cols-2 gap-3">
-            <Link to="/personel" className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-xl text-center text-sm transition-colors">
-              Personel & Yetkiler
-            </Link>
-            <Link to="/reports" className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-4 rounded-xl text-center text-sm transition-colors shadow-md">
-              Detaylı Puantaj Raporu
-            </Link>
-            <Link to="/logs" className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-xl text-center text-sm transition-colors">
-              Geçiş Logları
-            </Link>
-            <Link to="/shifts" className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-xl text-center text-sm transition-colors">
-              Vardiya Yönetimi
-            </Link>
-          </div>
-        </div>
-
-      </div>
-
     </div>
   );
 }

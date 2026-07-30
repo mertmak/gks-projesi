@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
+import { customIcons, AG_GRID_LOCALE_TR } from '../utils/constants';
+import { socket } from '../api/socket';
 
 // AG Grid importları ve Yeni Tema Motoru
 import { AgGridReact } from 'ag-grid-react';
@@ -7,41 +9,6 @@ import { ModuleRegistry, AllCommunityModule, ValidationModule, themeQuartz } fro
 import 'ag-grid-community/styles/ag-grid.css';
 
 ModuleRegistry.registerModules([AllCommunityModule, ValidationModule]);
-
-// ÖZEL İKONLAR (Belirgin Filtre Simgesi)
-const customIcons = {
-  filter: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>'
-};
-
-// AG GRID TÜRKÇE DİL DESTEĞİ
-const AG_GRID_LOCALE_TR = {
-  contains: 'İçerir',
-  notContains: 'İçermez',
-  startsWith: 'Şununla Başlar',
-  endsWith: 'Şununla Biter',
-  equals: 'Eşittir',
-  notEqual: 'Eşit Değildir',
-  blank: 'Boş Olanlar',
-  notBlank: 'Boş Olmayanlar',
-  empty: 'Seçiniz',
-  filterOoo: 'Filtrele...',
-  applyFilter: 'Uygula',
-  clearFilter: 'Temizle',
-  resetFilter: 'Sıfırla',
-  cancelFilter: 'İptal',
-  andCondition: 'VE',
-  orCondition: 'VEYA',
-  page: 'Sayfa',
-  more: 'Daha',
-  to: '-',
-  of: '/',
-  next: 'İleri',
-  last: 'Son',
-  first: 'İlk',
-  previous: 'Geri',
-  loadingOoo: 'Yükleniyor...',
-  noRowsToShow: 'Gösterilecek kayıt bulunamadı.'
-};
 
 function SystemLogs() {
   const bugunTarihi = new Date();
@@ -143,21 +110,26 @@ function SystemLogs() {
     }
   };
 
-  // --- SESSİZ CANLI GÜNCELLEME (REAL-TIME POLLING) ---
-  useEffect(() => {
-    let interval;
-    if (hasSearched) {
-      interval = setInterval(async () => {
-        try {
-          const response = await api.get('/system-logs', { params: filters });
-          setLogs(response.data); 
-        } catch (err) {
-          console.error("Arka plan güncelleme hatası:", err);
-        }
-      }, 3000); 
-    }
-    return () => clearInterval(interval);
-  }, [hasSearched, filters]); 
+useEffect(() => {
+    // 1. Eğer bir arama/filtre yapıldıysa verileri tazeleyecek fonksiyon
+    const refreshLogs = async () => {
+      if (!hasSearched) return;
+      try {
+        const response = await api.get('/system-logs', { params: filters });
+        setLogs(response.data); 
+      } catch (err) {
+        console.error("Socket güncelleme hatası:", err);
+      }
+    };
+
+    // 2. Backend'den 'new_system_log' sinyali geldiğinde refreshLogs'u çalıştır
+    socket.on('new_system_log', refreshLogs);
+
+    // 3. Component ekrandan gidince dinlemeyi bırak (Memory leak önleme)
+    return () => {
+      socket.off('new_system_log', refreshLogs);
+    };
+  }, [hasSearched, filters]);
 
   return (
     <div className="space-y-4">

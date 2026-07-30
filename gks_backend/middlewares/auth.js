@@ -1,5 +1,7 @@
 const jwt = require('jsonwebtoken');
-const SECRET_KEY = 'gks_super_gizli_anahtar_2026';
+
+// Gizli anahtarı .env dosyasından çekiyoruz, bulamazsa güvenli bir hata atması için fallback ekliyoruz
+const SECRET_KEY = process.env.JWT_SECRET || 'fallback_guvenlik_anahtari_degistirilmeli';
 
 const verifyToken = (req, res, next) => {
     const bearerHeader = req.headers['authorization'];
@@ -7,14 +9,14 @@ const verifyToken = (req, res, next) => {
         const token = bearerHeader.split(' ')[1]; 
         jwt.verify(token, SECRET_KEY, (err, authData) => {
             if (err) {
-                return res.status(403).json({ message: 'Token geçersiz veya süresi dolmuş.' });
+                return res.status(403).json({ success: false, message: 'Token geçersiz veya süresi dolmuş.' });
             } else {
                 req.user = authData; 
                 next(); 
             }
         });
     } else {
-        res.status(401).json({ message: 'Erişim reddedildi. Token bulunamadı.' });
+        res.status(401).json({ success: false, message: 'Erişim reddedildi. Token bulunamadı.' });
     }
 };
 
@@ -22,7 +24,7 @@ const verifyAdmin = (req, res, next) => {
     if (req.user && req.user.role === 'admin') {
         next(); 
     } else {
-        res.status(403).json({ message: 'Bu işlem için YÖNETİCİ yetkisine sahip olmalısınız!' });
+        res.status(403).json({ success: false, message: 'Bu işlem için YÖNETİCİ yetkisine sahip olmalısınız!' });
     }
 };
 

@@ -3,6 +3,7 @@ const router = express.Router();
 const { sql } = require('../db');
 const { verifyToken } = require('../middlewares/auth');
 const { addDoorLog } = require('../utils/logger');
+const socket = require('../utils/socket');
 
 router.get('/doors', verifyToken, async (req, res) => {
     // Get doors kodlarınız...
@@ -33,6 +34,8 @@ router.post('/doors', verifyToken, async (req, res) => {
         `);
         
         await addDoorLog(aktifKullanici, 'YENİ KAPI', kapi_adi, `Sisteme yeni kapı eklendi. Türü: ${kapi_turu || 'İç Geçiş'}`);
+        socket.getIO().emit('doors_updated');
+        socket.getIO().emit('system_updated');
         res.json({ success: true, message: 'Kapı başarıyla eklendi.' });
     } catch (err) {
         console.error("Kapı ekleme hatası:", err);
@@ -61,6 +64,8 @@ router.put('/doors/:id', verifyToken, async (req, res) => {
         `);
 
         await addDoorLog(aktifKullanici, 'KAPI GÜNCELLENDİ', kapi_adi, `Kapı bilgileri güncellendi. Yeni Tür: ${kapi_turu}`);
+        socket.getIO().emit('doors_updated');
+        socket.getIO().emit('system_updated');
         res.json({ success: true, message: 'Kapı başarıyla güncellendi.' });
     } catch (err) {
         console.error("Kapı güncelleme hatası:", err);
@@ -93,6 +98,8 @@ router.patch('/doors/:id/status', verifyToken, async (req, res) => {
                 : 'Kapı kullanıma kapatıldı ve üzerindeki tüm personel yetkileri temizlendi.';
                 
             await addDoorLog(aktifKullanici, islem, kapi_adi, detay);
+            socket.getIO().emit('doors_updated');
+            socket.getIO().emit('system_updated');
             res.json({ success: true, message: `Kapı başarıyla ${durum === 1 ? 'aktifleştirildi' : 'pasife alındı'}.` });
         } catch (err) {
             console.error("Kapı durum güncelleme hatası:", err);

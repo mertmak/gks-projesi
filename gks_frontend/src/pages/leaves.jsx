@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
+import { customIcons, AG_GRID_LOCALE_TR } from '../utils/constants';
 
 // AG Grid
 import { AgGridReact } from 'ag-grid-react';
@@ -7,12 +8,6 @@ import { ModuleRegistry, AllCommunityModule, ValidationModule, themeQuartz } fro
 import 'ag-grid-community/styles/ag-grid.css';
 
 ModuleRegistry.registerModules([AllCommunityModule, ValidationModule]);
-
-const AG_GRID_LOCALE_TR = {
-  contains: 'İçerir', notContains: 'İçermez', startsWith: 'Başlar', endsWith: 'Biter', equals: 'Eşittir', notEqual: 'Eşit Değildir',
-  filterOoo: 'Filtrele...', applyFilter: 'Uygula', clearFilter: 'Temizle',
-  page: 'Sayfa', more: 'Daha', to: '-', of: '/', next: 'İleri', last: 'Son', first: 'İlk', previous: 'Geri', noRowsToShow: 'Kayıt bulunamadı.'
-};
 
 function Leaves() {
   const [leaves, setLeaves] = useState([]);

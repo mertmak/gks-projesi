@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import api from '../api/axios';
+import { customIcons, AG_GRID_LOCALE_TR } from '../utils/constants';
 
 // AG Grid importları ve Yeni Tema Motoru
 import { AgGridReact } from 'ag-grid-react';
@@ -7,18 +8,6 @@ import { ModuleRegistry, AllCommunityModule, ValidationModule, themeQuartz } fro
 import 'ag-grid-community/styles/ag-grid.css';
 
 ModuleRegistry.registerModules([AllCommunityModule, ValidationModule]);
-
-// ÖZEL İKONLAR
-const customIcons = {
-  filter: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>'
-};
-
-// AG GRID TÜRKÇE DİL DESTEĞİ
-const AG_GRID_LOCALE_TR = {
-  contains: 'İçerir', notContains: 'İçermez', startsWith: 'Şununla Başlar', endsWith: 'Şununla Biter', equals: 'Eşittir', notEqual: 'Eşit Değildir', blank: 'Boş Olanlar', notBlank: 'Boş Olmayanlar', empty: 'Seçiniz',
-  filterOoo: 'Filtrele...', applyFilter: 'Uygula', clearFilter: 'Temizle', resetFilter: 'Sıfırla', cancelFilter: 'İptal',
-  andCondition: 'VE', orCondition: 'VEYA', page: 'Sayfa', more: 'Daha', to: '-', of: '/', next: 'İleri', last: 'Son', first: 'İlk', previous: 'Geri', loadingOoo: 'Yükleniyor...', noRowsToShow: 'Gösterilecek kayıt bulunamadı.'
-};
 
 // SQL'den gelen tarih (Date) veya saat (Time) verisini HH:mm formatına dönüştüren yardımcı fonksiyon
 const extractTime = (val) => {
@@ -164,6 +153,9 @@ function Reports() {
         else if (text.includes('Erken Çıktı')) colorClass = 'bg-orange-100 text-orange-700 border border-orange-200';
         else if (text.includes('Çıkış Yok') || text.includes('Çıkış Okutulmadı')) colorClass = 'bg-yellow-100 text-yellow-700 border border-yellow-200';
         // YENİ EKLENEN İZİN RENKLENDİRMELERİ
+        // Reports.jsx içindeki Durum Özeti hücresi
+        else if (text === 'Hafta Tatili') colorClass = 'bg-slate-100 text-slate-500 border border-slate-200';
+        else if (text === 'Tatil Mesaisi') colorClass = 'bg-teal-100 text-teal-700 border border-teal-200';
         else if (text === 'Yıllık İzin' || text === 'Mazeret İzni' || text === 'Ücretsiz İzin') colorClass = 'bg-blue-100 text-blue-700 border border-blue-200';
         else if (text === 'Raporlu') colorClass = 'bg-purple-100 text-purple-700 border border-purple-200';
 

@@ -4,24 +4,40 @@ const { sql } = require('../db');
 const { verifyToken } = require('../middlewares/auth');
 
 router.get('/dashboard/summary', verifyToken, async (req, res) => {
-     // Dashboard kodlarınız...
-         try {
+    try {
         const query = `
             SELECT 
                 (SELECT COUNT(*) FROM Logs WHERE CAST(Zaman AS DATE) = CAST(GETDATE() AS DATE)) AS BugunGecis,
                 (SELECT COUNT(*) FROM Users WHERE Durum = 1) AS AktifPersonel,
-                (SELECT COUNT(*) FROM Logs WHERE CAST(Zaman AS DATE) = CAST(GETDATE() AS DATE) AND Basarili_Mi = 0) AS YetkisizGiris
+                (SELECT COUNT(*) FROM Logs WHERE CAST(Zaman AS DATE) = CAST(GETDATE() AS DATE) AND Basarili_Mi = 0) AS YetkisizGiris,
+                (SELECT COUNT(*) FROM Doors WHERE Durum = 1 OR Durum IS NULL) AS AktifKapi
         `;
         const result = await sql.query(query);
-        res.json(result.recordset[0]); 
+        
+        // Yeni Tasarım İçin: Son 10 geçiş hareketini ekliyoruz
+        const recentLogsRes = await sql.query(`
+            SELECT TOP 10 
+                L.ID, L.Zaman, L.Basarili_Mi, 
+                U.Ad_Soyad, U.Departman, U.Sicil_No,
+                D.Kapi_Adi, D.Kapi_Turu
+            FROM Logs L
+            LEFT JOIN Users U ON L.RFID_Kart_No = U.RFID_Kart_No
+            LEFT JOIN Doors D ON L.Door_ID = D.ID
+            ORDER BY L.Zaman DESC
+        `);
+
+        res.json({
+            success: true,
+            stats: result.recordset[0],
+            recentLogs: recentLogsRes.recordset
+        }); 
     } catch (err) {
         res.status(500).json({ success: false, message: 'Özet veriler çekilemedi.' });
     }
 });
 
 router.get('/logs', verifyToken, async (req, res) => {
-     // /logs kodlarınız...
-         try {
+    try {
         const { baslangic, bitis, arama } = req.query;
         let query = `
             SELECT TOP 5000 L.ID, U.Ad_Soyad, L.RFID_Kart_No, D.Kapi_Adi, L.Basarili_Mi, L.Zaman 
@@ -43,8 +59,7 @@ router.get('/logs', verifyToken, async (req, res) => {
 });
 
 router.get('/system-logs', verifyToken, async (req, res) => {
-    // /system-logs kodlarınız...
-        try {
+    try {
         const { baslangic, bitis, arama } = req.query;
         let query = `SELECT TOP 5000 * FROM SystemLogs WHERE 1=1`;
         const request = new sql.Request();
@@ -60,8 +75,7 @@ router.get('/system-logs', verifyToken, async (req, res) => {
 });
 
 router.get('/door-logs', verifyToken, async (req, res) => {
-    // /door-logs kodlarınız...
-        try {
+    try {
         const { baslangic, bitis, arama } = req.query;
         let query = `SELECT TOP 5000 * FROM DoorLogs WHERE 1=1`;
         const request = new sql.Request();

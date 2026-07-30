@@ -2,8 +2,11 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { connectDB } = require('./db');
+const http = require('http'); // YENİ: Node.js yerleşik http modülü
+const socket = require('./utils/socket'); // YENİ: Socket yöneticimiz
 
 // Rotaları projeye dahil ediyoruz
+
 const authRoutes = require('./routes/authRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const userRoutes = require('./routes/userRoutes');
@@ -11,8 +14,8 @@ const doorRoutes = require('./routes/doorRoutes');
 const shiftRoutes = require('./routes/shiftRoutes'); 
 const reportRoutes = require('./routes/reportRoutes');
 const leaveRoutes = require('./routes/leaveRoutes');
-const seederRoutes = require('./routes/seederRoutes');
-
+const seederRoutes = require('./routes/seederRoutes'); // Yukarıdaki require alanlarına
+const errorHandler = require('./middlewares/errorHandler');
 const app = express();
 
 // Temel Middleware'ler
@@ -34,12 +37,22 @@ app.use('/api', userRoutes);
 app.use('/api', doorRoutes);
 app.use('/api', shiftRoutes); 
 app.use('/api', reportRoutes);
-app.use('/api', leaveRoutes);
-app.use('/api', seederRoutes);
+app.use('/api',leaveRoutes);
+app.use('/api', seederRoutes); // app.use alanlarına
 
+const server = http.createServer(app);
+const io = socket.init(server);
+io.on('connection', (client) => {
+    console.log('⚡ Yeni bir frontend istemcisi bağlandı:', client.id);
+    
+    client.on('disconnect', () => {
+        console.log('🔌 İstemci ayrıldı:', client.id);
+    });
+});
+
+app.use(errorHandler);
 // Sunucuyu başlatma
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
     console.log(`Sunucu ${PORT} portunda başarıyla başlatıldı.`);
-    console.log(`Log API'sini test etmek için: http://localhost:${PORT}/api/logs`);
 });
