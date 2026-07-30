@@ -1,10 +1,49 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import api from '../api/axios';
 
 // AG Grid importları
 import { AgGridReact } from 'ag-grid-react';
+import { ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-quartz.css';
+ModuleRegistry.registerModules([AllCommunityModule]);
+
+// AG GRID TÜRKÇE DİL DESTEĞİ
+const AG_GRID_LOCALE_TR = {
+  // Filtreleme (Filter) Menüsü
+  contains: 'İçerir',
+  notContains: 'İçermez',
+  startsWith: 'Şununla Başlar',
+  endsWith: 'Şununla Biter',
+  equals: 'Eşittir',
+  notEqual: 'Eşit Değildir',
+  blank: 'Boş Olanlar',
+  notBlank: 'Boş Olmayanlar',
+  empty: 'Seçiniz',
+
+  // Arama Kutusu ve Butonlar
+  filterOoo: 'Filtrele...',
+  applyFilter: 'Uygula',
+  clearFilter: 'Temizle',
+  resetFilter: 'Sıfırla',
+  cancelFilter: 'İptal',
+  
+  // Mantıksal Operatörler
+  andCondition: 'VE',
+  orCondition: 'VEYA',
+
+  // Sayfalama (Pagination)
+  page: 'Sayfa',
+  more: 'Daha',
+  to: '-',
+  of: '/',
+  next: 'İleri',
+  last: 'Son',
+  first: 'İlk',
+  previous: 'Geri',
+  loadingOoo: 'Yükleniyor...',
+  noRowsToShow: 'Gösterilecek kayıt bulunamadı.'
+};
 
 function DoorLogs() {
   const bugunTarihi = new Date();
@@ -15,6 +54,7 @@ function DoorLogs() {
   const [logs, setLogs] = useState([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
 
   // --- AG GRID SÜTUN AYARLARI ---
   const [colDefs] = useState([
@@ -47,7 +87,7 @@ function DoorLogs() {
       )
     },
     { field: 'Kapi_Adi', headerName: 'Kapı Adı', width: 250, filter: true },
-    { field: 'Detay', headerName: 'Detay', flex: 1, filter: true, wrapText: true, autoHeight: true }
+    { field: 'Detay', headerName: 'Detay', flex: 1,minWidth: 200,filter: true, wrapText: true, autoHeight: true }
   ]);
 
   const defaultColDef = {
@@ -71,6 +111,28 @@ function DoorLogs() {
     }
   };
 
+
+  // --- YENİ EKLENEN: SESSİZ CANLI GÜNCELLEME (REAL-TIME POLLING) ---
+  useEffect(() => {
+    let interval;
+    
+    // Sadece tablo ekrandaysa (arama yapıldıysa) arka planda çalışmaya başla
+    if (hasSearched) {
+      interval = setInterval(async () => {
+        try {
+          // DİKKAT: Burada setLoading(true) kullanmıyoruz ki tablo titremesin!
+          const response = await api.get('/door-logs', { params: filters });
+          setUsers(response.data); // Sadece veriyi sessizce ez
+        } catch (err) {
+          console.error("Arka plan güncelleme hatası:", err);
+        }
+      }, 3000); // 3000 milisaniye = 3 saniyede bir yeniler (İstersen 5000 yapabilirsin)
+    }
+
+    // Komponentten çıkıldığında veya filtre değiştiğinde eski sayacı temizle
+    return () => clearInterval(interval);
+  }, [hasSearched, filters]); 
+  // ----------------------------------------------------------------
   return (
     <div className="space-y-4">
       {/* FİLTRE MENÜSÜ */}
@@ -107,6 +169,7 @@ function DoorLogs() {
               columnDefs={colDefs}
               defaultColDef={defaultColDef}
               pagination={true}
+              localeText={AG_GRID_LOCALE_TR}
               paginationPageSize={50}
               domLayout="normal"
             />

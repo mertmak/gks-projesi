@@ -1,10 +1,50 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import api from '../api/axios';
+
 
 // AG Grid importları
 import { AgGridReact } from 'ag-grid-react';
+import { ModuleRegistry, AllCommunityModule, ValidationModule, themeQuartz } from 'ag-grid-community';
 import 'ag-grid-community/styles/ag-grid.css';
-import 'ag-grid-community/styles/ag-theme-quartz.css';
+
+ModuleRegistry.registerModules([AllCommunityModule, ValidationModule]);
+
+// AG GRID TÜRKÇE DİL DESTEĞİ
+const AG_GRID_LOCALE_TR = {
+  // Filtreleme (Filter) Menüsü
+  contains: 'İçerir',
+  notContains: 'İçermez',
+  startsWith: 'Şununla Başlar',
+  endsWith: 'Şununla Biter',
+  equals: 'Eşittir',
+  notEqual: 'Eşit Değildir',
+  blank: 'Boş Olanlar',
+  notBlank: 'Boş Olmayanlar',
+  empty: 'Seçiniz',
+
+  // Arama Kutusu ve Butonlar
+  filterOoo: 'Filtrele...',
+  applyFilter: 'Uygula',
+  clearFilter: 'Temizle',
+  resetFilter: 'Sıfırla',
+  cancelFilter: 'İptal',
+  
+  // Mantıksal Operatörler
+  andCondition: 'VE',
+  orCondition: 'VEYA',
+
+  // Sayfalama (Pagination)
+  page: 'Sayfa',
+  more: 'Daha',
+  to: '-',
+  of: '/',
+  next: 'İleri',
+  last: 'Son',
+  first: 'İlk',
+  previous: 'Geri',
+  loadingOoo: 'Yükleniyor...',
+  noRowsToShow: 'Gösterilecek kayıt bulunamadı.'
+};
 
 function Users() {
   const now = new Date();
@@ -15,6 +55,7 @@ function Users() {
   const [hasSearched, setHasSearched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState([]);
+  const [suggestions, setSuggestions] = useState([]);
   
   const [message, setMessage] = useState({ text: '', type: '' });
   const [isEditing, setIsEditing] = useState(false);
@@ -38,6 +79,31 @@ function Users() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // --- OTOMATİK TAMAMLAMA FONKSİYONLARI ---
+  const handleSearchInputChange = async (e) => {
+    const value = e.target.value;
+    setFilters({ ...filters, arama: value }); // Input kutusuna yazılanı state'e kaydet
+
+    // En az 2 karakter yazıldığında arama başlat
+    if (value.length >= 2) {
+      try {
+        // Sadece arama parametresiyle backend'den sonuçları çek
+        const response = await api.get('/users', { params: { arama: value } });
+        setSuggestions(response.data);
+      } catch (err) {
+        console.error("Öneriler çekilemedi:", err);
+      }
+    } else {
+      setSuggestions([]); // 2 harften azsa listeyi temizle
+    }
+  };
+
+  const handleSuggestionClick = (user) => {
+    // Listeden birine tıklandığında input kutusuna adını yazdır ve listeyi kapat
+    setFilters({ ...filters, arama: user.Ad_Soyad });
+    setSuggestions([]);
   };
 
   const handleFetchData = async (e) => {
@@ -155,9 +221,9 @@ function Users() {
   const [colDefs] = useState([
     { field: 'Sicil_No', headerName: 'Sicil No', width: 120, filter: true },
     { field: 'Sistem_ID', headerName: 'Sistem ID', width: 130, filter: true },
-    { field: 'Ad_Soyad', headerName: 'Ad Soyad', flex: 1, filter: true },
+    { field: 'Ad_Soyad', headerName: 'Ad Soyad', flex: 1,minWidth: 200, filter: true },
     { field: 'TC_Kimlik', headerName: 'TC Kimlik', width: 130, filter: true },
-    { field: 'Departman', headerName: 'Departman', flex: 1, filter: true },
+    { field: 'Departman', headerName: 'Departman', flex: 1,minWidth: 200, filter: true },
     { 
       field: 'Durum', 
       headerName: 'Durum', 
@@ -200,6 +266,28 @@ function Users() {
     cellStyle: { borderRight: '1px solid #cbd5e1' }, 
     headerClass: 'border-r border-slate-300' 
   };
+
+  // --- YENİ EKLENEN: SESSİZ CANLI GÜNCELLEME (REAL-TIME POLLING) ---
+  useEffect(() => {
+    let interval;
+    
+    // Sadece tablo ekrandaysa (arama yapıldıysa) arka planda çalışmaya başla
+    if (hasSearched) {
+      interval = setInterval(async () => {
+        try {
+          // DİKKAT: Burada setLoading(true) kullanmıyoruz ki tablo titremesin!
+          const response = await api.get('/users', { params: filters });
+          setUsers(response.data); // Sadece veriyi sessizce ez
+        } catch (err) {
+          console.error("Arka plan güncelleme hatası:", err);
+        }
+      }, 3000); // 3000 milisaniye = 3 saniyede bir yeniler (İstersen 5000 yapabilirsin)
+    }
+
+    // Komponentten çıkıldığında veya filtre değiştiğinde eski sayacı temizle
+    return () => clearInterval(interval);
+  }, [hasSearched, filters]); 
+  // ----------------------------------------------------------------
 
   return (
     <div className="space-y-8 relative">
@@ -290,9 +378,34 @@ function Users() {
           <label className="block text-xs font-bold text-slate-600 mb-1">İşe Giriş (Bitiş)</label>
           <input type="date" value={filters.bitis} onChange={(e) => setFilters({...filters, bitis: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
-        <div>
-          <label className="block text-xs font-bold text-slate-600 mb-1">Ad Soyad / Sicil</label>
-          <input type="text" placeholder="Ara..." value={filters.arama} onChange={(e) => setFilters({...filters, arama: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+        {/* 'relative' class'ı, açılır menünün input'un hemen altında hizalanmasını sağlar */}
+        <div className="relative">
+          <label className="block text-xs font-bold text-slate-600 mb-1">Ad Soyad / Sicil No</label>
+          <input 
+            type="text" 
+            placeholder="Sicil veya isim ara..." 
+            value={filters.arama} 
+            onChange={handleSearchInputChange} 
+            // Kullanıcı başka yere tıkladığında listeyi kapat (tıklanabilmesi için 200ms gecikme veriyoruz)
+            onBlur={() => setTimeout(() => setSuggestions([]), 200)} 
+            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all" 
+          />
+          
+          {/* OTOMATİK TAMAMLAMA LİSTESİ */}
+          {suggestions.length > 0 && (
+            <ul className="absolute z-50 w-full bg-white border border-slate-200 shadow-2xl max-h-56 overflow-y-auto rounded-lg mt-1 left-0 divide-y divide-slate-100">
+              {suggestions.map((user) => (
+                <li 
+                  key={user.ID} 
+                  onClick={() => handleSuggestionClick(user)}
+                  className="px-4 py-2 hover:bg-blue-50 cursor-pointer transition-colors flex flex-col"
+                >
+                  <span className="font-bold text-slate-800 text-sm">{user.Ad_Soyad}</span>
+                  <span className="text-slate-500 text-xs">Sicil: {user.Sicil_No} | {user.Departman || 'Departman Yok'}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         <div>
           <button type="submit" disabled={loading} className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-lg">
@@ -306,11 +419,13 @@ function Users() {
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col p-2 h-[50vh]">
           <div className="p-2 text-sm font-bold text-slate-700">Arama Sonuçları ({users.length} Kayıt)</div>
           
-          <div className="ag-theme-quartz flex-1 w-full h-full">
+          <div className="flex-1 w-full h-full">
             <AgGridReact
+              theme={themeQuartz}
               rowData={users}
               columnDefs={colDefs}
               defaultColDef={defaultColDef} 
+              localeText={AG_GRID_LOCALE_TR}
               pagination={true}
               paginationPageSize={50}
               domLayout="normal"
