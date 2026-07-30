@@ -49,7 +49,7 @@ function PersonnelOperations() {
     if (value.length >= 2) {
       try {
         const res = await api.get('/users', { params: { arama: value } });
-        setSuggestions(res.data.slice(0, 8)); // İlk 8 sonucu göster
+        setSuggestions(res.data.slice(0, 8));
       } catch (err) {}
     } else {
       setSuggestions([]);
@@ -64,7 +64,6 @@ function PersonnelOperations() {
     setSuggestions([]);
     
     try {
-      // Personelin güncel yetkilerini ve vardiyasını çek
       const [authRes, shiftRes] = await Promise.all([
         api.get(`/users/${user.ID}/doors`),
         api.get(`/users/${user.ID}/shift`)
@@ -90,16 +89,30 @@ function PersonnelOperations() {
     }
   };
 
+  // --- SADECE RAKAM GİRİŞİNE İZİN VEREN FONKSİYON ---
+  const handleNumericChange = (e) => {
+    const { name, value } = e.target;
+    // Harfleri temizler, sadece rakam bırakır
+    const onlyNums = value.replace(/[^0-9]/g, ''); 
+    setFormData({ ...formData, [name]: onlyNums });
+  };
+
   // --- SUBMIT İŞLEMLERİ ---
 
-  // 1. YENİ PERSONEL EKLEME (YENİ EKLENDİ)
+  // 1. YENİ PERSONEL EKLEME
   const handleAddSubmit = async (e) => {
     e.preventDefault();
+    setMessage({ text: '', type: '' });
+
+    // UZUNLUK KONTROLLERİ
+    if (formData.tc.length !== 11) return setMessage({ text: 'HATA: TC Kimlik No tam 11 haneli olmalıdır.', type: 'error' });
+    if (formData.sicil.length !== 5) return setMessage({ text: 'HATA: Sicil No tam 5 haneli olmalıdır.', type: 'error' });
+    if (formData.rfid && formData.rfid.length !== 11) return setMessage({ text: 'HATA: RFID Kart No tam 11 haneli olmalıdır.', type: 'error' });
+
     try {
       await api.post('/users', formData);
       setMessage({ text: 'Yeni personel başarıyla sisteme kaydedildi.', type: 'success' });
       setActiveModal(null);
-      // Formu temizle
       setFormData({ ad_soyad: '', rfid: '', tc: '', sicil: '', sirket: '', departman: '', gorev: '', ise_giris: '' });
     } catch (err) { 
       setMessage({ text: err.response?.data?.message || 'Kayıt başarısız oldu.', type: 'error' }); 
@@ -109,13 +122,21 @@ function PersonnelOperations() {
   // 2. MEVCUT PERSONELİ DÜZENLEME
   const handleEditSubmit = async (e) => {
     e.preventDefault();
+    setMessage({ text: '', type: '' });
+
+    // UZUNLUK KONTROLLERİ
+    if (formData.tc.length !== 11) return setMessage({ text: 'HATA: TC Kimlik No tam 11 haneli olmalıdır.', type: 'error' });
+    if (formData.sicil.length !== 5) return setMessage({ text: 'HATA: Sicil No tam 5 haneli olmalıdır.', type: 'error' });
+    if (formData.rfid && formData.rfid.length !== 11) return setMessage({ text: 'HATA: RFID Kart No tam 11 haneli olmalıdır.', type: 'error' });
+
     try {
       await api.put(`/users/${selectedUser.ID}`, formData);
       setMessage({ text: 'Kimlik bilgileri güncellendi.', type: 'success' });
-      // UI'daki objeyi de güncelle
       setSelectedUser({ ...selectedUser, ...formData });
       setActiveModal(null);
-    } catch (err) { setMessage({ text: 'Güncelleme başarısız.', type: 'error' }); }
+    } catch (err) { 
+      setMessage({ text: err.response?.data?.message || 'Güncelleme başarısız.', type: 'error' }); 
+    }
   };
 
   const handleAuthSubmit = async (e) => {
@@ -155,7 +176,6 @@ function PersonnelOperations() {
   return (
     <div className="space-y-6 mt-8 relative">
       
-      {/* BAŞLIK VE YENİ EKLE BUTONU (GÜNCELLENDİ) */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Personel İşlem Merkezi</h2>
@@ -163,7 +183,6 @@ function PersonnelOperations() {
         </div>
         <button 
           onClick={() => {
-            // Yeni kayıt için formu temizle ve modalı aç
             setFormData({ ad_soyad: '', rfid: '', tc: '', sicil: '', sirket: '', departman: '', gorev: '', ise_giris: '' });
             setActiveModal('add');
           }}
@@ -216,11 +235,9 @@ function PersonnelOperations() {
         {loading && <div className="text-sm font-bold text-blue-600 mt-2 animate-pulse">Personel verileri yükleniyor...</div>}
       </div>
 
-      {/* PERSONEL DASHBOARD (Seçildiyse Gösterilir) */}
+      {/* PERSONEL DASHBOARD */}
       {selectedUser && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in-up">
-          
-          {/* PROFİL KARTI */}
           <div className="md:col-span-1 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col items-center text-center">
             <div className="w-24 h-24 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mb-4 border-4 border-white shadow-lg">
               <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
@@ -237,10 +254,7 @@ function PersonnelOperations() {
             </div>
           </div>
 
-          {/* İŞLEM KARTLARI (MENÜLER) */}
           <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            
-            {/* DÜZENLE KARTI */}
             <div onClick={() => setActiveModal('edit')} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:border-blue-400 hover:shadow-md cursor-pointer transition-all group">
               <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
@@ -249,16 +263,14 @@ function PersonnelOperations() {
               <p className="text-sm text-slate-500 mt-1">Personelin departman, görev, kart numarası veya TC bilgilerini güncelleyin.</p>
             </div>
 
-            {/* YETKİ KARTI */}
             <div onClick={() => setActiveModal('auth')} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:border-purple-400 hover:shadow-md cursor-pointer transition-all group">
               <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
               </div>
               <h4 className="text-lg font-bold text-slate-800">Kapı Geçiş Yetkileri</h4>
-              <p className="text-sm text-slate-500 mt-1">Giriş yapabileceği kapıları ve alanları (turnike, mola alanı) yönetin.</p>
+              <p className="text-sm text-slate-500 mt-1">Giriş yapabileceği kapıları ve alanları yönetin.</p>
             </div>
 
-            {/* VARDİYA KARTI */}
             <div onClick={() => setActiveModal('shift')} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:border-amber-400 hover:shadow-md cursor-pointer transition-all group">
               <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -267,31 +279,31 @@ function PersonnelOperations() {
               <p className="text-sm text-slate-500 mt-1">Personelin bağlı olduğu vardiyayı atayın veya değiştirin.</p>
             </div>
 
-            {/* ÇIKIŞ/İŞE ALIM KARTI */}
             <div onClick={() => setActiveModal('status')} className={`bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md cursor-pointer transition-all group ${selectedUser.Durum ? 'hover:border-red-400' : 'hover:border-green-400'}`}>
               <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform ${selectedUser.Durum ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7a4 4 0 11-8 0 4 4 0 018 0zM9 14a6 6 0 00-6 6v1h12v-1a6 6 0 00-6-6zM21 12h-6"></path></svg>
               </div>
               <h4 className="text-lg font-bold text-slate-800">{selectedUser.Durum ? 'İşten Çıkar / Pasife Al' : 'Tekrar İşe Al / Aktifleştir'}</h4>
-              <p className="text-sm text-slate-500 mt-1">Personelin sistemdeki varlığını ve geçiş haklarını tamamen durdurur veya açar.</p>
+              <p className="text-sm text-slate-500 mt-1">Personelin sistemdeki varlığını ve geçiş haklarını durdurur veya açar.</p>
             </div>
-
           </div>
         </div>
       )}
 
-      {/* ---------------- MODALLAR (İşlem Pencereleri) ---------------- */}
+      {/* ---------------- MODALLAR ---------------- */}
 
-      {/* 0. YENİ PERSONEL EKLE MODALI (YENİ EKLENDİ) */}
+      {/* 0. YENİ PERSONEL EKLE MODALI */}
       {activeModal === 'add' && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-4xl border border-slate-200 max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-black text-slate-800 mb-4">Yeni Personel Kaydı</h3>
             <form onSubmit={handleAddSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">T.C. Kimlik No *</label><input type="text" maxLength="11" name="tc" value={formData.tc || ''} onChange={(e) => setFormData({...formData, tc: e.target.value})} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+              {/* YENİ EKLENEN KISIM: handleNumericChange ve minLength Kullanımları */}
+              <div><label className="block text-xs font-bold text-slate-500 mb-1">T.C. Kimlik No (11 Hane)*</label><input type="text" maxLength="11" minLength="11" name="tc" value={formData.tc || ''} onChange={handleNumericChange} required placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" /></div>
               <div><label className="block text-xs font-bold text-slate-500 mb-1">Ad Soyad *</label><input type="text" name="ad_soyad" value={formData.ad_soyad || ''} onChange={(e) => setFormData({...formData, ad_soyad: e.target.value})} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">Kurum Sicil No *</label><input type="text" maxLength="11" name="sicil" value={formData.sicil || ''} onChange={(e) => setFormData({...formData, sicil: e.target.value})} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">RFID Kart No</label><input type="text" name="rfid" value={formData.rfid || ''} onChange={(e) => setFormData({...formData, rfid: e.target.value})} className="w-full px-3 py-2 border rounded-lg bg-slate-50 outline-none" /></div>
+              <div><label className="block text-xs font-bold text-slate-500 mb-1">Kurum Sicil No (5 Hane)*</label><input type="text" maxLength="5" minLength="5" name="sicil" value={formData.sicil || ''} onChange={handleNumericChange} required placeholder="5 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" /></div>
+              <div><label className="block text-xs font-bold text-slate-500 mb-1">RFID Kart No (11 Hane)</label><input type="text" maxLength="11" minLength="11" name="rfid" value={formData.rfid || ''} onChange={handleNumericChange} placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg bg-slate-50 outline-none font-mono" /></div>
+              
               <div><label className="block text-xs font-bold text-slate-500 mb-1">Şirket / Taşeron</label><input type="text" name="sirket" value={formData.sirket || ''} onChange={(e) => setFormData({...formData, sirket: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
               <div><label className="block text-xs font-bold text-slate-500 mb-1">Departman & Görev</label><input type="text" name="departman" value={formData.departman || ''} onChange={(e) => setFormData({...formData, departman: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
               <div><label className="block text-xs font-bold text-slate-500 mb-1">İşe Giriş Tarihi</label><input type="date" name="ise_giris" value={formData.ise_giris || ''} onChange={(e) => setFormData({...formData, ise_giris: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
@@ -310,10 +322,12 @@ function PersonnelOperations() {
           <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-4xl border border-slate-200 max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-black text-slate-800 mb-4">Kimlik Bilgilerini Düzenle</h3>
             <form onSubmit={handleEditSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">T.C. Kimlik No *</label><input type="text" maxLength="11" name="tc" value={formData.tc || ''} onChange={(e) => setFormData({...formData, tc: e.target.value})} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+              {/* YENİ EKLENEN KISIM: handleNumericChange ve minLength Kullanımları */}
+              <div><label className="block text-xs font-bold text-slate-500 mb-1">T.C. Kimlik No (11 Hane)*</label><input type="text" maxLength="11" minLength="11" name="tc" value={formData.tc || ''} onChange={handleNumericChange} required placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" /></div>
               <div><label className="block text-xs font-bold text-slate-500 mb-1">Ad Soyad *</label><input type="text" name="ad_soyad" value={formData.ad_soyad || ''} onChange={(e) => setFormData({...formData, ad_soyad: e.target.value})} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">Kurum Sicil No *</label><input type="text" maxLength="11" name="sicil" value={formData.sicil || ''} onChange={(e) => setFormData({...formData, sicil: e.target.value})} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">RFID Kart No</label><input type="text" name="rfid" value={formData.rfid || ''} onChange={(e) => setFormData({...formData, rfid: e.target.value})} className="w-full px-3 py-2 border rounded-lg bg-slate-50 outline-none" /></div>
+              <div><label className="block text-xs font-bold text-slate-500 mb-1">Kurum Sicil No (5 Hane)*</label><input type="text" maxLength="5" minLength="5" name="sicil" value={formData.sicil || ''} onChange={handleNumericChange} required placeholder="5 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" /></div>
+              <div><label className="block text-xs font-bold text-slate-500 mb-1">RFID Kart No (11 Hane)</label><input type="text" maxLength="11" minLength="11" name="rfid" value={formData.rfid || ''} onChange={handleNumericChange} placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg bg-slate-50 outline-none font-mono" /></div>
+              
               <div><label className="block text-xs font-bold text-slate-500 mb-1">Şirket / Taşeron</label><input type="text" name="sirket" value={formData.sirket || ''} onChange={(e) => setFormData({...formData, sirket: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
               <div><label className="block text-xs font-bold text-slate-500 mb-1">Departman & Görev</label><input type="text" name="departman" value={formData.departman || ''} onChange={(e) => setFormData({...formData, departman: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
               <div className="md:col-span-2 flex justify-end space-x-3 mt-4">

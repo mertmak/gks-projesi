@@ -15,32 +15,12 @@ const customIcons = {
 
 // AG GRID TÜRKÇE DİL DESTEĞİ
 const AG_GRID_LOCALE_TR = {
-  contains: 'İçerir',
-  notContains: 'İçermez',
-  startsWith: 'Şununla Başlar',
-  endsWith: 'Şununla Biter',
-  equals: 'Eşittir',
-  notEqual: 'Eşit Değildir',
-  blank: 'Boş Olanlar',
-  notBlank: 'Boş Olmayanlar',
-  empty: 'Seçiniz',
-  filterOoo: 'Filtrele...',
-  applyFilter: 'Uygula',
-  clearFilter: 'Temizle',
-  resetFilter: 'Sıfırla',
-  cancelFilter: 'İptal',
-  andCondition: 'VE',
-  orCondition: 'VEYA',
-  page: 'Sayfa',
-  more: 'Daha',
-  to: '-',
-  of: '/',
-  next: 'İleri',
-  last: 'Son',
-  first: 'İlk',
-  previous: 'Geri',
-  loadingOoo: 'Yükleniyor...',
-  noRowsToShow: 'Gösterilecek kayıt bulunamadı.'
+  contains: 'İçerir', notContains: 'İçermez', startsWith: 'Şununla Başlar', endsWith: 'Şununla Biter',
+  equals: 'Eşittir', notEqual: 'Eşit Değildir', blank: 'Boş Olanlar', notBlank: 'Boş Olmayanlar',
+  empty: 'Seçiniz', filterOoo: 'Filtrele...', applyFilter: 'Uygula', clearFilter: 'Temizle',
+  resetFilter: 'Sıfırla', cancelFilter: 'İptal', andCondition: 'VE', orCondition: 'VEYA',
+  page: 'Sayfa', more: 'Daha', to: '-', of: '/', next: 'İleri', last: 'Son', first: 'İlk',
+  previous: 'Geri', loadingOoo: 'Yükleniyor...', noRowsToShow: 'Gösterilecek kayıt bulunamadı.'
 };
 
 // MSSQL'den gelen saat verisini (Örn: 1970-01-01T09:00:00.000Z veya 09:00:00) HH:mm formatına çeviren yardımcı fonksiyon
@@ -49,6 +29,12 @@ const formatTimeForInput = (val) => {
   if (val.includes('T')) return val.split('T')[1].substring(0, 5);
   return val.substring(0, 5);
 };
+
+// GÜN TANIMLARI (JavaScript Date objesiyle eşleşecek şekilde)
+const GUNLER = [
+  { id: 1, ad: 'Pzt' }, { id: 2, ad: 'Sal' }, { id: 3, ad: 'Çar' }, 
+  { id: 4, ad: 'Per' }, { id: 5, ad: 'Cum' }, { id: 6, ad: 'Cmt' }, { id: 0, ad: 'Paz' }
+];
 
 function Shifts() {
   const [shifts, setShifts] = useState([]);
@@ -62,6 +48,8 @@ function Shifts() {
   // DÜZENLEME (EDIT) VE EKLEME STATE'LERİ
   const [isEditing, setIsEditing] = useState(false);
   const [editId, setEditId] = useState(null);
+  
+  // FORM STATE (calisma_gunleri eklendi)
   const [formData, setFormData] = useState({ 
     vardiya_adi: '', 
     mesai_baslangic: '', 
@@ -69,7 +57,8 @@ function Shifts() {
     yemek_baslangic: '', 
     yemek_bitis: '', 
     tolerans_dk: 0, 
-    mola_hakki_dk: 0 
+    mola_hakki_dk: 0,
+    calisma_gunleri: [1, 2, 3, 4, 5] // Varsayılan Hafta İçi
   });
 
   const fetchShifts = async () => {
@@ -94,9 +83,7 @@ function Shifts() {
       try {
         const response = await api.get('/shifts');
         setShifts(response.data); 
-      } catch (err) {
-        console.error("Arka plan güncelleme hatası:", err);
-      }
+      } catch (err) {}
     }, 3000); 
     return () => clearInterval(interval);
   }, []); 
@@ -132,16 +119,23 @@ function Shifts() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMessage({ text: '', type: '' });
+    
+    // Gönderilecek veriyi hazırla (Diziyi virgüllü stringe çevir)
+    const payload = { 
+      ...formData, 
+      calisma_gunleri: formData.calisma_gunleri.join(',') 
+    };
+
     try {
       if (isEditing) {
-        await api.put(`/shifts/${editId}`, formData);
+        await api.put(`/shifts/${editId}`, payload);
         setMessage({ text: 'Vardiya başarıyla güncellendi.', type: 'success' });
       } else {
-        await api.post('/shifts', formData);
+        await api.post('/shifts', payload);
         setMessage({ text: 'Yeni vardiya sisteme eklendi.', type: 'success' });
       }
       
-      setFormData({ vardiya_adi: '', mesai_baslangic: '', mesai_bitis: '', yemek_baslangic: '', yemek_bitis: '', tolerans_dk: 0, mola_hakki_dk: 0 });
+      setFormData({ vardiya_adi: '', mesai_baslangic: '', mesai_bitis: '', yemek_baslangic: '', yemek_bitis: '', tolerans_dk: 0, mola_hakki_dk: 0, calisma_gunleri: [1, 2, 3, 4, 5] });
       setIsEditing(false);
       setEditId(null);
       fetchShifts(); 
@@ -153,6 +147,10 @@ function Shifts() {
   const handleEditClick = (shift) => {
     setIsEditing(true);
     setEditId(shift.ID);
+    
+    // Veritabanından gelen virgüllü metni diziye çevir (Boşsa varsayılanı kullan)
+    const parsedGunler = shift.Calisma_Gunleri ? shift.Calisma_Gunleri.split(',').map(Number) : [1, 2, 3, 4, 5];
+
     setFormData({ 
       vardiya_adi: shift.Vardiya_Adi || '',
       mesai_baslangic: formatTimeForInput(shift.Mesai_Baslangic),
@@ -160,7 +158,8 @@ function Shifts() {
       yemek_baslangic: formatTimeForInput(shift.Yemek_Baslangic),
       yemek_bitis: formatTimeForInput(shift.Yemek_Bitis),
       tolerans_dk: shift.Tolerans_Dk || 0,
-      mola_hakki_dk: shift.Mola_Hakki_Dk || 0
+      mola_hakki_dk: shift.Mola_Hakki_Dk || 0,
+      calisma_gunleri: parsedGunler
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -187,14 +186,27 @@ function Shifts() {
   const cancelEdit = () => {
     setIsEditing(false); 
     setEditId(null);
-    setFormData({ vardiya_adi: '', mesai_baslangic: '', mesai_bitis: '', yemek_baslangic: '', yemek_bitis: '', tolerans_dk: 0, mola_hakki_dk: 0 });
+    setFormData({ vardiya_adi: '', mesai_baslangic: '', mesai_bitis: '', yemek_baslangic: '', yemek_bitis: '', tolerans_dk: 0, mola_hakki_dk: 0, calisma_gunleri: [1, 2, 3, 4, 5] });
     setMessage({ text: '', type: '' });
   };
 
   // --- AG GRID SÜTUN AYARLARI ---
   const colDefs = useMemo(() => [
-    { field: 'ID', headerName: 'ID', width: 90 },
+    { field: 'ID', headerName: 'ID', width: 80 },
     { field: 'Vardiya_Adi', headerName: 'Vardiya Adı', flex: 1, minWidth: 180, cellClass: 'font-bold text-slate-800' },
+    { 
+      headerName: 'Çalışma Günleri', 
+      valueGetter: (params) => {
+        if (!params.data.Calisma_Gunleri) return 'Hafta İçi';
+        const gunlerArr = params.data.Calisma_Gunleri.split(',').map(Number);
+        if (gunlerArr.length === 7) return 'Her Gün';
+        if (gunlerArr.join(',') === '1,2,3,4,5') return 'Hafta İçi';
+        if (gunlerArr.join(',') === '0,6' || gunlerArr.join(',') === '6,0') return 'Hafta Sonu';
+        // Özel bir seçimse gün isimlerini yan yana yazdır
+        return gunlerArr.map(g => GUNLER.find(x => x.id === g)?.ad).join(', ');
+      },
+      width: 160 
+    },
     { 
       headerName: 'Mesai Saatleri', 
       valueGetter: (params) => {
@@ -202,7 +214,7 @@ function Shifts() {
         const bit = formatTimeForInput(params.data.Mesai_Bitis);
         return `${bas} - ${bit}`;
       },
-      width: 150 
+      width: 140 
     },
     { 
       headerName: 'Yemek Molası', 
@@ -211,12 +223,12 @@ function Shifts() {
         const bit = formatTimeForInput(params.data.Yemek_Bitis);
         return (bas && bit) ? `${bas} - ${bit}` : 'Belirtilmedi';
       },
-      width: 160 
+      width: 140 
     },
     { 
       headerName: 'Esneklik', 
       valueGetter: (params) => `Tol: ${params.data.Tolerans_Dk || 0}dk | Mola: ${params.data.Mola_Hakki_Dk || 0}dk`,
-      width: 180 
+      width: 170 
     },
     { 
       field: 'Durum', 
@@ -231,7 +243,7 @@ function Shifts() {
     },
     {
       headerName: 'İşlemler',
-      width: 200,
+      width: 180,
       sortable: false,
       filter: false,
       cellRenderer: (params) => {
@@ -257,9 +269,7 @@ function Shifts() {
   ], []);
 
   const defaultColDef = useMemo(() => ({
-    filter: true,
-    sortable: true,
-    resizable: true,
+    filter: true, sortable: true, resizable: true,
     cellStyle: { borderRight: '1px solid #cbd5e1' },
     headerClass: 'border-r border-slate-300'
   }), []);
@@ -269,7 +279,7 @@ function Shifts() {
       
       <div>
         <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Vardiya ve Çalışma Saatleri</h2>
-        <p className="text-slate-500 text-sm mt-1">Sistemdeki çalışma vardiyalarını, tolerans sürelerini ve mola saatlerini buradan yönetebilirsiniz.</p>
+        <p className="text-slate-500 text-sm mt-1">Sistemdeki çalışma vardiyalarını, günleri ve mola sürelerini yönetebilirsiniz.</p>
       </div>
 
       {/* EKLEME / DÜZENLEME FORMU */}
@@ -288,99 +298,71 @@ function Shifts() {
           
           <div className="md:col-span-4">
             <label className="block text-xs font-bold text-slate-500 mb-1">Vardiya Adı *</label>
-            <input 
-              type="text" 
-              name="vardiya_adi" 
-              value={formData.vardiya_adi} 
-              onChange={handleChange} 
-              placeholder="Örn: Hafta İçi Gündüz Vardiyası"
-              required 
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
-            />
+            <input type="text" name="vardiya_adi" value={formData.vardiya_adi} onChange={handleChange} placeholder="Örn: Hafta İçi Gündüz Vardiyası" required className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
           </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-500 mb-1">Mesai Başlangıç *</label>
-            <input 
-              type="time" 
-              name="mesai_baslangic" 
-              value={formData.mesai_baslangic} 
-              onChange={handleChange} 
-              required 
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
-            />
+            <input type="time" name="mesai_baslangic" value={formData.mesai_baslangic} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-500 mb-1">Mesai Bitiş *</label>
-            <input 
-              type="time" 
-              name="mesai_bitis" 
-              value={formData.mesai_bitis} 
-              onChange={handleChange} 
-              required 
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
-            />
+            <input type="time" name="mesai_bitis" value={formData.mesai_bitis} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
           </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-500 mb-1">Yemek Başlangıç</label>
-            <input 
-              type="time" 
-              name="yemek_baslangic" 
-              value={formData.yemek_baslangic} 
-              onChange={handleChange} 
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
-            />
+            <input type="time" name="yemek_baslangic" value={formData.yemek_baslangic} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-500 mb-1">Yemek Bitiş</label>
-            <input 
-              type="time" 
-              name="yemek_bitis" 
-              value={formData.yemek_bitis} 
-              onChange={handleChange} 
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
-            />
+            <input type="time" name="yemek_bitis" value={formData.yemek_bitis} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
           </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-500 mb-1">Tolerans (Dakika)</label>
-            <input 
-              type="number" 
-              name="tolerans_dk" 
-              value={formData.tolerans_dk} 
-              onChange={handleChange} 
-              min="0"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
-            />
+            <input type="number" name="tolerans_dk" value={formData.tolerans_dk} onChange={handleChange} min="0" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
           </div>
           
           <div>
             <label className="block text-xs font-bold text-slate-500 mb-1">Günlük Mola Hakkı (Dakika)</label>
-            <input 
-              type="number" 
-              name="mola_hakki_dk" 
-              value={formData.mola_hakki_dk} 
-              onChange={handleChange} 
-              min="0"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
-            />
+            <input type="number" name="mola_hakki_dk" value={formData.mola_hakki_dk} onChange={handleChange} min="0" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
           </div>
 
-          <div className="md:col-span-2 flex justify-end space-x-3 mt-2">
+          {/* YENİ: ÇALIŞMA GÜNLERİ SEÇİMİ */}
+          <div className="md:col-span-4 mt-2">
+            <label className="block text-xs font-bold text-slate-500 mb-2">Çalışma Günleri Seçimi *</label>
+            <div className="flex flex-wrap gap-2">
+              {GUNLER.map(gun => (
+                <button
+                  key={gun.id} type="button"
+                  onClick={() => {
+                    setFormData(prev => ({
+                      ...prev,
+                      calisma_gunleri: prev.calisma_gunleri.includes(gun.id) 
+                        ? prev.calisma_gunleri.filter(g => g !== gun.id) 
+                        : [...prev.calisma_gunleri, gun.id].sort()
+                    }))
+                  }}
+                  className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${
+                    formData.calisma_gunleri.includes(gun.id) 
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-md' 
+                      : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  {gun.ad}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="md:col-span-4 flex justify-end space-x-3 mt-4">
             {isEditing && (
-              <button 
-                type="button" 
-                onClick={cancelEdit} 
-                className="px-6 py-2 bg-slate-200 font-bold text-slate-700 rounded-lg hover:bg-slate-300 transition-colors w-full"
-              >
+              <button type="button" onClick={cancelEdit} className="px-6 py-2 bg-slate-200 font-bold text-slate-700 rounded-lg hover:bg-slate-300 transition-colors w-1/4">
                 İptal Et
               </button>
             )}
-            <button 
-              type="submit" 
-              className={`px-6 py-2 font-bold rounded-lg text-white transition-colors w-full ${isEditing ? 'bg-orange-500 hover:bg-orange-600' : 'bg-slate-900 hover:bg-slate-800'}`}
-            >
+            <button type="submit" className={`px-6 py-2 font-bold rounded-lg text-white transition-colors w-1/4 ${isEditing ? 'bg-orange-500 hover:bg-orange-600' : 'bg-slate-900 hover:bg-slate-800'}`}>
               {isEditing ? 'Vardiyayı Güncelle' : 'Sisteme Kaydet'}
             </button>
           </div>
@@ -389,27 +371,14 @@ function Shifts() {
 
       {/* ARAMA VE TABLO BÖLÜMÜ */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col p-4 h-[55vh]">
-        
-        {/* ARAMA KUTUSU */}
         <div className="mb-4 relative w-full md:w-1/3">
           <label className="block text-xs font-bold text-slate-600 mb-1">Vardiya Ara</label>
-          <input 
-            type="text" 
-            placeholder="Vardiya adı yazın..." 
-            value={arama} 
-            onChange={handleSearchInputChange} 
-            onBlur={() => setTimeout(() => setSuggestions([]), 200)} 
-            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all" 
-          />
+          <input type="text" placeholder="Vardiya adı yazın..." value={arama} onChange={handleSearchInputChange} onBlur={() => setTimeout(() => setSuggestions([]), 200)} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all" />
           
           {suggestions.length > 0 && (
             <ul className="absolute z-50 w-full bg-white border border-slate-200 shadow-2xl max-h-56 overflow-y-auto rounded-lg mt-1 left-0 divide-y divide-slate-100">
               {suggestions.map((shift) => (
-                <li 
-                  key={shift.ID} 
-                  onClick={() => handleSuggestionClick(shift)}
-                  className="px-4 py-2 hover:bg-blue-50 cursor-pointer transition-colors"
-                >
+                <li key={shift.ID} onClick={() => handleSuggestionClick(shift)} className="px-4 py-2 hover:bg-blue-50 cursor-pointer transition-colors">
                   <span className="font-bold text-slate-800 text-sm">{shift.Vardiya_Adi}</span>
                 </li>
               ))}
@@ -423,17 +392,9 @@ function Shifts() {
         
         <div className="flex-1 w-full h-full">
           <AgGridReact
-            theme={themeQuartz} 
-            icons={customIcons} 
-            alwaysMultiSort={true} 
-            getRowId={(params) => params.data.ID} 
-            rowData={filteredShifts}
-            columnDefs={colDefs}
-            defaultColDef={defaultColDef}
-            pagination={true}
-            localeText={AG_GRID_LOCALE_TR}
-            paginationPageSize={50}
-            domLayout="normal"
+            theme={themeQuartz} icons={customIcons} alwaysMultiSort={true} getRowId={(params) => params.data.ID} 
+            rowData={filteredShifts} columnDefs={colDefs} defaultColDef={defaultColDef} pagination={true}
+            localeText={AG_GRID_LOCALE_TR} paginationPageSize={50} domLayout="normal"
           />
         </div>
       </div>

@@ -30,7 +30,6 @@ router.post('/users/bulk/shift', verifyToken, async (req, res) => {
         const request = new sql.Request();
         if (hedef_deger) request.input('deger', sql.NVarChar, hedef_deger);
         
-        // YENİ: "Tumu" seçeneği için dinamik koşul
         let condition = '1=1';
         if (hedef_turu === 'Sirket') condition = 'Sirket = @deger';
         else if (hedef_turu === 'Departman') condition = 'Departman = @deger';
@@ -140,7 +139,7 @@ router.post('/users/bulk/status', verifyToken, async (req, res) => {
         const usersRes = await request.query(`SELECT ID FROM Users WHERE Durum = ${arananDurum} AND ${condition}`);
         const affectedUsers = usersRes.recordset;
 
-        if (affectedUsers.length === 0) return res.status(404).json({ success: false, message: `Bu kritere uygun işlem yapılabilecek personel bulunamadı (Belki hepsi zaten istenilen durumda).` });
+        if (affectedUsers.length === 0) return res.status(404).json({ success: false, message: `Bu kritere uygun işlem yapılabilecek personel bulunamadı.` });
 
         for (let user of affectedUsers) {
             const reqUser = new sql.Request();
@@ -193,6 +192,17 @@ router.post('/users', verifyToken, async (req, res) => {
 
     if (!ad_soyad || !tc || !sicil) return res.status(400).json({ success: false, message: 'Ad, TC ve Kurum Sicil No zorunludur!' });
 
+    // Katı Karakter ve Uzunluk Doğrulamaları (TC: 11, RFID: 11, Sicil: 5)
+    if (!/^\d{11}$/.test(tc)) {
+        return res.status(400).json({ success: false, message: 'HATA: TC Kimlik numarası tam 11 haneli RAKAM olmalıdır.' });
+    }   
+    if (rfid && rfid.trim() !== '' && !/^\d{11}$/.test(rfid.trim())) {
+        return res.status(400).json({ success: false, message: 'HATA: RFID Kart numarası tam 11 haneli RAKAM olmalıdır.' });
+    }
+    if (!/^\d{5}$/.test(sicil)) {
+        return res.status(400).json({ success: false, message: 'HATA: Kurum sicil numarası tam 5 haneli RAKAM olmalıdır.' });
+    }
+
     let finalRfid = `KART_YOK_${Date.now()}`;
     if (rfid && typeof rfid === 'string' && rfid.trim() !== '') finalRfid = rfid.trim();
     const finalIseGiris = (ise_giris && ise_giris.trim() !== '') ? ise_giris : new Date().toISOString().split('T')[0];
@@ -231,6 +241,17 @@ router.put('/users/:id', verifyToken, async (req, res) => {
     const aktifKullanici = req.user?.kullanici_adi || 'Sistem Yetkilisi';
     const { ad_soyad, rfid, tc, sicil, sirket, departman, gorev, ise_giris } = req.body;
     const currentUserId = req.params.id;
+
+    // Katı Karakter ve Uzunluk Doğrulamaları (TC: 11, RFID: 11, Sicil: 5)
+    if (tc && !/^\d{11}$/.test(tc)) {
+        return res.status(400).json({ success: false, message: 'HATA: TC Kimlik numarası tam 11 haneli RAKAM olmalıdır.' });
+    }   
+    if (rfid && rfid.trim() !== '' && !/^\d{11}$/.test(rfid.trim())) {
+        return res.status(400).json({ success: false, message: 'HATA: RFID Kart numarası tam 11 haneli RAKAM olmalıdır.' });
+    }
+    if (sicil && !/^\d{5}$/.test(sicil)) {
+        return res.status(400).json({ success: false, message: 'HATA: Kurum sicil numarası tam 5 haneli RAKAM olmalıdır.' });
+    }
 
     let finalRfid = `KART_YOK_${Date.now()}`;
     if (rfid && typeof rfid === 'string' && rfid.trim() !== '') finalRfid = rfid.trim();
@@ -331,7 +352,6 @@ router.post('/users/:id/doors', verifyToken, async (req, res) => {
             for (let doorId of doorIds) {
                 const reqInsert = new sql.Request();
                 reqInsert.input('uid', sql.Int, userId);
-                // DÜZELTME: Kapı ID'sini Number() yaptık
                 reqInsert.input('did', sql.Int, Number(doorId)); 
                 await reqInsert.query(`INSERT INTO Permissions (User_ID, Door_ID) VALUES (@uid, @did)`);
             }
@@ -387,7 +407,6 @@ router.post('/users/:id/shift', verifyToken, async (req, res) => {
         `);
 
         if (vardiya_id) {
-            // DÜZELTME: Gelen vardiya ID'sini Number() yaptık
             request.input('vid', sql.Int, Number(vardiya_id)); 
             await request.query(`
                 INSERT INTO Personel_Vardiya (User_ID, Vardiya_ID, Baslangic_Tarihi) 

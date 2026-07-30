@@ -26,11 +26,14 @@ function Users() {
   const [hasSearched, setHasSearched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState([]);
+  
+  // ARAMA ÖNERİLERİ İÇİN STATE
   const [suggestions, setSuggestions] = useState([]);
   
   const [message, setMessage] = useState({ text: '', type: '' });
   
-  // FORM / DÜZENLEME STATE'LERİ
+  // FORM / DÜZENLEME MODALI STATE'LERİ
+  const [showAddEditModal, setShowAddEditModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editId, setEditId] = useState(null);
   const [formData, setFormData] = useState({ ad_soyad: '', rfid: '', tc: '', sicil: '', sirket: '', departman: '', gorev: '', ise_giris: '' });
@@ -48,12 +51,12 @@ function Users() {
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [shiftData, setShiftData] = useState({ user: null, allShifts: [], selectedShiftId: '' });
 
-  // --- YENİ EKLENEN: HIZLI İŞLEM PANELİ STATE'LERİ ---
+  // HIZLI İŞLEM PANELİ STATE'LERİ
   const [quickSearch, setQuickSearch] = useState('');
   const [quickSuggestions, setQuickSuggestions] = useState([]);
   const [quickSelectedUser, setQuickSelectedUser] = useState(null);
 
-  // --- YENİ EKLENEN: TOPLU VARDİYA STATE'LERİ ---
+  // TOPLU VARDİYA STATE'LERİ
   const [showBulkShiftModal, setShowBulkShiftModal] = useState(false);
   const [bulkShiftData, setBulkShiftData] = useState({ hedef_turu: 'Departman', hedef_deger: '', vardiya_id: '', allShifts: [] });
 
@@ -69,13 +72,14 @@ function Users() {
     }
   };
 
+  // FİLTRELEME ÇUBUĞU İÇİN ARAMA ÖNERİSİ GETİRME
   const handleSearchInputChange = async (e) => {
     const value = e.target.value;
     setFilters({ ...filters, arama: value }); 
     if (value.length >= 2) {
       try {
         const response = await api.get('/users', { params: { arama: value } });
-        setSuggestions(response.data);
+        setSuggestions(response.data.slice(0, 5)); // En fazla 5 sonuç göster
       } catch (err) {}
     } else {
       setSuggestions([]); 
@@ -85,7 +89,15 @@ function Users() {
   const handleFetchData = async (e) => {
     e.preventDefault();
     setHasSearched(true);
+    setSuggestions([]); // Arama yapıldığında listeyi kapat
     await fetchUsers();
+  };
+
+  // SADECE RAKAM GİRİŞİNE İZİN VEREN FONKSİYON (YENİ)
+  const handleNumericChange = (e) => {
+    const { name, value } = e.target;
+    const onlyNums = value.replace(/[^0-9]/g, ''); 
+    setFormData({ ...formData, [name]: onlyNums });
   };
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -94,17 +106,25 @@ function Users() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMessage({ text: '', type: '' });
+
+    // ZORUNLU UZUNLUK VE FORMAT KONTROLLERİ (YENİ)
+    if (formData.tc.length !== 11) return setMessage({ text: 'HATA: TC Kimlik No tam 11 haneli olmalıdır.', type: 'error' });
+    if (formData.sicil.length !== 5) return setMessage({ text: 'HATA: Sicil No tam 5 haneli olmalıdır.', type: 'error' });
+    if (formData.rfid && formData.rfid.length !== 11) return setMessage({ text: 'HATA: RFID Kart No tam 11 haneli olmalıdır.', type: 'error' });
+
     try {
       if (isEditing) {
         await api.put(`/users/${editId}`, formData);
-        setMessage({ text: 'Personel güncellendi.', type: 'success' });
+        setMessage({ text: 'Personel başarıyla güncellendi.', type: 'success' });
       } else {
         await api.post('/users', formData);
-        setMessage({ text: 'Yeni personel kaydedildi.', type: 'success' });
+        setMessage({ text: 'Yeni personel başarıyla kaydedildi.', type: 'success' });
       }
       setFormData({ ad_soyad: '', rfid: '', tc: '', sicil: '', sirket: '', departman: '', gorev: '', ise_giris: '' });
       setIsEditing(false);
       setEditId(null);
+      setShowAddEditModal(false); 
+      
       if (quickSelectedUser) setQuickSelectedUser(null);
       if (hasSearched) fetchUsers(); 
     } catch (err) {
@@ -118,6 +138,7 @@ function Users() {
     setFormData({
       ad_soyad: user.Ad_Soyad || '', rfid: user.RFID_Kart_No?.includes('KART_YOK') ? '' : (user.RFID_Kart_No || ''), tc: user.TC_Kimlik || '', sicil: user.Sicil_No || '', sirket: user.Sirket || '', departman: user.Departman || '', gorev: user.Gorev || '', ise_giris: user.Ise_Giris_Tarihi ? user.Ise_Giris_Tarihi.split('T')[0] : ''
     });
+    setShowAddEditModal(true); 
   };
 
   const handleToggleStatus = async (user) => {
@@ -153,9 +174,11 @@ function Users() {
   };
 
   const cancelEdit = () => {
-    setIsEditing(false); setEditId(null);
+    setIsEditing(false); 
+    setEditId(null);
     setFormData({ ad_soyad: '', rfid: '', tc: '', sicil: '', sirket: '', departman: '', gorev: '', ise_giris: '' });
     setMessage({ text: '', type: '' });
+    setShowAddEditModal(false); 
   };
 
   // --- YETKİ FONKSİYONLARI ---
@@ -255,10 +278,10 @@ function Users() {
       headerName: 'İşlemler', width: 320, sortable: false, filter: false,
       cellRenderer: (params) => (
         <div className="space-x-2 mt-1">
-          <button onClick={() => handleEditClick(params.data)} className="px-2 py-1 bg-blue-50 text-blue-600 font-bold rounded text-xs">Düzenle</button>
-          <button onClick={() => handleAuthClick(params.data)} className="px-2 py-1 bg-purple-50 text-purple-600 font-bold rounded text-xs border border-purple-200">Yetkiler</button>
-          <button onClick={() => handleShiftClick(params.data)} className="px-2 py-1 bg-amber-50 text-amber-600 font-bold rounded text-xs border border-amber-200">Vardiya</button>
-          <button onClick={() => handleToggleStatus(params.data)} className={`px-2 py-1 font-bold rounded text-xs ${params.data.Durum ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+          <button onClick={() => handleEditClick(params.data)} className="px-2 py-1 bg-blue-50 text-blue-600 font-bold rounded text-xs hover:bg-blue-100 transition-colors">Düzenle</button>
+          <button onClick={() => handleAuthClick(params.data)} className="px-2 py-1 bg-purple-50 text-purple-600 font-bold rounded text-xs border border-purple-200 hover:bg-purple-100 transition-colors">Yetkiler</button>
+          <button onClick={() => handleShiftClick(params.data)} className="px-2 py-1 bg-amber-50 text-amber-600 font-bold rounded text-xs border border-amber-200 hover:bg-amber-100 transition-colors">Vardiya</button>
+          <button onClick={() => handleToggleStatus(params.data)} className={`px-2 py-1 font-bold rounded text-xs transition-colors ${params.data.Durum ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-green-50 text-green-600 hover:bg-green-100'}`}>
             {params.data.Durum ? 'İşten Çıkar' : 'İşe Al'}
           </button>
         </div>
@@ -283,11 +306,60 @@ function Users() {
   }, [hasSearched, filters]); 
 
   return (
-    <div className="space-y-8 relative">
+    <div className="space-y-6 relative mt-4">
+
+      {/* --- YENİ PERSONEL EKLE BUTONU --- */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+        <div>
+          <h2 className="text-xl font-bold text-slate-800">Personel Listesi ve Hızlı İşlemler</h2>
+          <p className="text-slate-500 text-sm mt-1">Sistemdeki personelleri arayın, yönetin veya yeni kayıt ekleyin.</p>
+        </div>
+        <button 
+          onClick={() => {
+            setIsEditing(false);
+            setFormData({ ad_soyad: '', rfid: '', tc: '', sicil: '', sirket: '', departman: '', gorev: '', ise_giris: '' });
+            setShowAddEditModal(true);
+          }}
+          className="px-5 py-2.5 bg-slate-900 text-white font-bold rounded-xl shadow-md hover:bg-slate-800 transition-colors flex items-center space-x-2 whitespace-nowrap"
+        >
+           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
+           <span>Yeni Personel Ekle</span>
+        </button>
+      </div>
       
-      {/* ---------------- MODALLAR ---------------- */}
+      {/* ---------------- MODALLAR (Add/Edit, Çıkış, Yetki, Vardiya, Toplu) ---------------- */}
+      {showAddEditModal && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-4xl border border-slate-200 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-black text-slate-800 mb-4">
+              {isEditing ? 'Personel Düzenle' : 'Yeni Personel Kaydı'}
+            </h3>
+            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              
+              {/* YENİ EKLENEN KISIM: handleNumericChange ve minLength Kullanımları */}
+              <div><label className="block text-xs font-bold text-slate-500 mb-1">T.C. Kimlik No (11 Hane) *</label><input type="text" maxLength="11" minLength="11" name="tc" value={formData.tc} onChange={handleNumericChange} required placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono tracking-widest" /></div>
+              <div><label className="block text-xs font-bold text-slate-500 mb-1">Ad Soyad *</label><input type="text" name="ad_soyad" value={formData.ad_soyad} onChange={handleChange} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+              <div><label className="block text-xs font-bold text-slate-500 mb-1">Kurum Sicil No (5 Hane) *</label><input type="text" maxLength="5" minLength="5" name="sicil" value={formData.sicil} onChange={handleNumericChange} required placeholder="5 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono tracking-widest" /></div>
+              <div><label className="block text-xs font-bold text-slate-500 mb-1">RFID Kart No (11 Hane)</label><input type="text" maxLength="11" minLength="11" name="rfid" value={formData.rfid} onChange={handleNumericChange} placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg bg-slate-50 outline-none font-mono tracking-widest" /></div>
+              
+              <div className="md:col-span-2"><label className="block text-xs font-bold text-slate-500 mb-1">Şirket / Taşeron</label><input type="text" name="sirket" value={formData.sirket} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
+              <div><label className="block text-xs font-bold text-slate-500 mb-1">Departman & Görev</label><input type="text" name="departman" value={formData.departman} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
+              <div><label className="block text-xs font-bold text-slate-500 mb-1">İşe Giriş Tarihi</label><input type="date" name="ise_giris" value={formData.ise_giris} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
+              
+              <div className="md:col-span-4 flex justify-end space-x-3 mt-4">
+                <button type="button" onClick={cancelEdit} className="px-6 py-2 bg-slate-200 font-bold rounded-lg hover:bg-slate-300">İptal</button>
+                <button type="submit" className={`px-6 py-2 font-bold rounded-lg text-white hover:opacity-90 ${isEditing ? 'bg-orange-500' : 'bg-slate-900'}`}>
+                  {isEditing ? 'Bilgileri Güncelle' : 'Kaydet'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* (Diğer modalların kodları aynı bırakılmıştır: showExitModal, showAuthModal, showShiftModal, showBulkShiftModal) */}
       {showExitModal && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200">
             <h3 className="text-xl font-black text-red-600 mb-2">İşten Çıkış / Pasife Al</h3>
             <form onSubmit={handleExitSubmit} className="space-y-4 mt-4">
@@ -300,7 +372,7 @@ function Users() {
       )}
 
       {showAuthModal && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200">
             <h3 className="text-xl font-black text-slate-800 mb-2">Kapı Geçiş Yetkileri</h3>
             <p className="text-sm text-slate-600 mb-4"><span className="font-bold">{authData.user?.Ad_Soyad}</span> için izinli kapıları seçin.</p>
@@ -322,7 +394,7 @@ function Users() {
       )}
 
       {showShiftModal && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200">
             <h3 className="text-xl font-black text-slate-800 mb-2">Bireysel Vardiya Ataması</h3>
             <p className="text-sm text-slate-600 mb-4"><span className="font-bold">{shiftData.user?.Ad_Soyad}</span> adlı personelin vardiyasını belirleyin.</p>
@@ -337,9 +409,8 @@ function Users() {
         </div>
       )}
 
-      {/* TOPLU VARDİYA MODALI */}
       {showBulkShiftModal && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200">
             <h3 className="text-xl font-black text-amber-600 mb-2">Toplu Vardiya Atama</h3>
             <p className="text-sm text-slate-600 mb-4">Bir departman veya şirketteki tüm personellerin vardiyasını tek tıkla değiştirin.</p>
@@ -372,12 +443,11 @@ function Users() {
           </div>
         </div>
       )}
-      {/* ------------------------------------------- */}
 
       {message.text && <div className={`p-4 rounded-lg text-sm font-bold border ${message.type === 'success' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>{message.text}</div>}
 
-      {/* --- YENİ: HIZLI İŞLEM PANELİ (TABLO DIŞI) --- */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-6 md:items-end z-10 relative">
+      {/* --- HIZLI İŞLEM PANELİ (TABLO DIŞI) --- */}
+      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-6 md:items-end z-20 relative">
         <div className="flex-1 relative">
           <label className="block text-xs font-bold text-slate-600 mb-1">Hızlı İşlem (İsim veya Sicil No Ara)</label>
           <input 
@@ -420,36 +490,45 @@ function Users() {
            </button>
         </div>
       </div>
-      {/* ------------------------------------------ */}
 
-      {/* EKLEME FORMU */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-        <h2 className="text-xl font-bold text-slate-800 mb-4">{isEditing ? 'Personel Düzenle (Listeden / Hızlı Seçimden)' : 'Yeni Personel Kaydı'}</h2>
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div><label className="block text-xs font-bold text-slate-500 mb-1">T.C. Kimlik No *</label><input type="text" maxLength="11" name="tc" value={formData.tc} onChange={handleChange} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-          <div><label className="block text-xs font-bold text-slate-500 mb-1">Ad Soyad *</label><input type="text" name="ad_soyad" value={formData.ad_soyad} onChange={handleChange} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-          <div><label className="block text-xs font-bold text-slate-500 mb-1">Kurum Sicil No *</label><input type="text" maxLength="11" name="sicil" value={formData.sicil} onChange={handleChange} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-          <div><label className="block text-xs font-bold text-slate-500 mb-1">RFID Kart No</label><input type="text" name="rfid" value={formData.rfid} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg bg-slate-50 outline-none" /></div>
-          <div className="md:col-span-2"><label className="block text-xs font-bold text-slate-500 mb-1">Şirket / Taşeron</label><input type="text" name="sirket" value={formData.sirket} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
-          <div><label className="block text-xs font-bold text-slate-500 mb-1">Departman & Görev</label><input type="text" name="departman" value={formData.departman} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
-          <div><label className="block text-xs font-bold text-slate-500 mb-1">İşe Giriş Tarihi</label><input type="date" name="ise_giris" value={formData.ise_giris} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
-          <div className="md:col-span-4 flex justify-end space-x-3 mt-2">
-            {isEditing && <button type="button" onClick={cancelEdit} className="px-6 py-2 bg-slate-200 font-bold rounded-lg">İptal Et</button>}
-            <button type="submit" className={`px-6 py-2 font-bold rounded-lg text-white ${isEditing ? 'bg-orange-500' : 'bg-slate-900'}`}>{isEditing ? 'Bilgileri Güncelle' : 'Kaydet'}</button>
-          </div>
-        </form>
-      </div>
-
-      {/* PERSONEL ARAMA FİLTRESİ */}
-      <form onSubmit={handleFetchData} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+      {/* --- PERSONEL ARAMA FİLTRESİ --- */}
+      <form onSubmit={handleFetchData} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4 items-end relative z-10">
         <div><label className="block text-xs font-bold text-slate-600 mb-1">İşe Giriş (Başlangıç)</label><input type="date" value={filters.baslangic} onChange={(e) => setFilters({...filters, baslangic: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg" /></div>
         <div><label className="block text-xs font-bold text-slate-600 mb-1">İşe Giriş (Bitiş)</label><input type="date" value={filters.bitis} onChange={(e) => setFilters({...filters, bitis: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg" /></div>
+        
+        {/* ARAMA KUTUSU VE ÖNERİLER (SUGGESTIONS) DROPDOWN'U */}
         <div className="relative">
           <label className="block text-xs font-bold text-slate-600 mb-1">Ad Soyad / Sicil No</label>
-          <input type="text" placeholder="Tabloyu filtrele..." value={filters.arama} onChange={handleSearchInputChange} onBlur={() => setTimeout(() => setSuggestions([]), 200)} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-blue-500" />
+          <input 
+            type="text" 
+            placeholder="Tabloyu filtrele..." 
+            value={filters.arama} 
+            onChange={handleSearchInputChange} 
+            onBlur={() => setTimeout(() => setSuggestions([]), 200)} 
+            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-blue-500" 
+          />
+          
+          {suggestions.length > 0 && (
+            <ul className="absolute z-50 w-full bg-white border border-slate-200 shadow-2xl rounded-lg mt-1 left-0 divide-y divide-slate-100 max-h-60 overflow-y-auto">
+              {suggestions.map((user) => (
+                <li 
+                  key={user.ID} 
+                  onClick={() => { 
+                    setFilters({...filters, arama: user.Ad_Soyad}); 
+                    setSuggestions([]); 
+                  }}
+                  className="px-4 py-3 hover:bg-blue-50 cursor-pointer flex flex-col"
+                >
+                  <span className="font-bold text-slate-800 text-sm">{user.Ad_Soyad}</span>
+                  <span className="text-slate-500 text-xs">Sicil: {user.Sicil_No} | {user.Departman || 'Departman Yok'}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
+        
         <div>
-          <button type="submit" disabled={loading} className="w-full py-2 bg-slate-900 text-white font-bold text-sm rounded-lg">
+          <button type="submit" disabled={loading} className="w-full py-2 bg-slate-900 text-white font-bold text-sm rounded-lg hover:bg-slate-800">
              {loading ? 'Aranıyor...' : 'Personelleri Listele'}
           </button>
         </div>

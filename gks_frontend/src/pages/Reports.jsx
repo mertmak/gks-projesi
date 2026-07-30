@@ -163,6 +163,9 @@ function Reports() {
         else if (text.includes('Geç Kaldı') || text.includes('Devamsız') || text.includes('Mola Aşımı')) colorClass = 'bg-red-100 text-red-700 border border-red-200';
         else if (text.includes('Erken Çıktı')) colorClass = 'bg-orange-100 text-orange-700 border border-orange-200';
         else if (text.includes('Çıkış Yok') || text.includes('Çıkış Okutulmadı')) colorClass = 'bg-yellow-100 text-yellow-700 border border-yellow-200';
+        // YENİ EKLENEN İZİN RENKLENDİRMELERİ
+        else if (text === 'Yıllık İzin' || text === 'Mazeret İzni' || text === 'Ücretsiz İzin') colorClass = 'bg-blue-100 text-blue-700 border border-blue-200';
+        else if (text === 'Raporlu') colorClass = 'bg-purple-100 text-purple-700 border border-purple-200';
 
         return <span className={`px-2 py-1 rounded-full text-[11px] font-bold ${colorClass}`}>{text}</span>;
       }

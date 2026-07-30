@@ -22,6 +22,7 @@ const parseTimeToMinutes = (timeObj) => {
 };
 
 // GÜNLÜK PUANTAJ VE MOLA HESAPLAMA MOTORU
+// GÜNLÜK PUANTAJ VE MOLA HESAPLAMA MOTORU
 router.get('/reports/daily-attendance', verifyToken, async (req, res) => {
     const targetDate = req.query.tarih || new Date().toISOString().split('T')[0];
 
@@ -29,7 +30,7 @@ router.get('/reports/daily-attendance', verifyToken, async (req, res) => {
         const request = new sql.Request();
         request.input('tarih', sql.Date, targetDate);
 
-        // DÜZELTME 1: Kapi_Turu sorgularındaki kelimelerin başına 'N' takısı eklendi (N'Ana Giriş')
+        // YENİ: Izin_Durumu alt sorgusu eklendi!
         const userQuery = `
             SELECT 
                 U.ID as User_ID, 
@@ -42,12 +43,15 @@ router.get('/reports/daily-attendance', verifyToken, async (req, res) => {
                 V.Mesai_Bitis, 
                 V.Tolerans_Dk,
                 V.Mola_Hakki_Dk,
+                V.Calisma_Gunleri,
                 (SELECT TOP 1 L.Zaman FROM Logs L JOIN Doors D ON L.Door_ID = D.ID 
                  WHERE L.RFID_Kart_No = U.RFID_Kart_No AND CAST(L.Zaman AS DATE) = @tarih AND D.Kapi_Turu = N'Ana Giriş' AND L.Basarili_Mi = 1 
                  ORDER BY L.Zaman ASC) AS Ilk_Giris,
                 (SELECT TOP 1 L.Zaman FROM Logs L JOIN Doors D ON L.Door_ID = D.ID 
                  WHERE L.RFID_Kart_No = U.RFID_Kart_No AND CAST(L.Zaman AS DATE) = @tarih AND D.Kapi_Turu = N'Ana Çıkış' AND L.Basarili_Mi = 1 
-                 ORDER BY L.Zaman DESC) AS Son_Cikis
+                 ORDER BY L.Zaman DESC) AS Son_Cikis,
+                (SELECT TOP 1 Izin_Turu FROM Izinler 
+                 WHERE User_ID = U.ID AND @tarih BETWEEN Baslangic_Tarihi AND Bitis_Tarihi) AS Izin_Durumu
             FROM Users U
             LEFT JOIN Personel_Vardiya PV ON U.ID = PV.User_ID AND PV.Bitis_Tarihi IS NULL
             LEFT JOIN Vardiyalar V ON PV.Vardiya_ID = V.ID
@@ -69,51 +73,68 @@ router.get('/reports/daily-attendance', verifyToken, async (req, res) => {
 
         const allLogs = logResult.recordset;
 
-        const reportData = userResult.recordset.map(row => {
+        // VERİYİ İŞLEME
+const reportData = userResult.recordset.map(row => {
             let durumText = 'Normal';
-            let gecKalmaDk = 0;
-            let erkenCikmaDk = 0;
-            
-            let toplamYemekDk = 0;
-            let toplamMolaDk = 0;
+            let gecKalmaDk = 0; let erkenCikmaDk = 0; let toplamYemekDk = 0; let toplamMolaDk = 0;
 
+            // HEDEF GÜNÜN HANGİ GÜN OLDUĞUNU BUL (0:Pazar, 1:Pzt, ... 6:Cmt)
+            const targetDayIndex = new Date(targetDate).getDay();
+            // Veritabanındaki metni sayı dizisine çevir (örn: '1,2,3,4,5' -> [1,2,3,4,5])
+            const calismaGunleri = row.Calisma_Gunleri ? row.Calisma_Gunleri.split(',').map(Number) : [1,2,3,4,5];
+            const isHaftaTatili = !calismaGunleri.includes(targetDayIndex); // Eğer bugünün indeksi dizide yoksa, tatildir!
+
+            // 1. ÖNCELİK: İzinli mi?
+            if (row.Izin_Durumu) {
+                return { ...row, Durum: row.Izin_Durumu, Gec_Kalma_Dk: 0, Erken_Cikma_Dk: 0, Toplam_Yemek_Dk: 0, Toplam_Mola_Dk: 0, Mola_Asimi_Dk: 0 };
+            }
+
+            // 2. ÖNCELİK: Vardiyası var mı?
             if (!row.Vardiya_Adi) {
                 return { ...row, Durum: 'Vardiya Yok', Gec_Kalma_Dk: 0, Erken_Cikma_Dk: 0, Toplam_Yemek_Dk: 0, Toplam_Mola_Dk: 0, Mola_Asimi_Dk: 0 };
             }
 
-            if (!row.Ilk_Giris) {
+            // YENİ 3. ÖNCELİK: Hafta Tatili Kontrolü
+            if (isHaftaTatili) {
+                if (!row.Ilk_Giris) {
+                    // Tatil gününde işe gelmediyse (olması gereken bu)
+                    return { ...row, Durum: 'Hafta Tatili', Gec_Kalma_Dk: 0, Erken_Cikma_Dk: 0, Toplam_Yemek_Dk: 0, Toplam_Mola_Dk: 0, Mola_Asimi_Dk: 0 };
+                } else {
+                    // Tatil gününde kart bastıysa! (Fazla Mesai / Tatil Mesaisi)
+                    durumText = 'Tatil Mesaisi';
+                }
+            } else if (!row.Ilk_Giris) {
+                // Çalışma gününde gelmediyse
                 return { ...row, Durum: 'Devamsız', Gec_Kalma_Dk: 0, Erken_Cikma_Dk: 0, Toplam_Yemek_Dk: 0, Toplam_Mola_Dk: 0, Mola_Asimi_Dk: 0 };
             }
 
-// --- 1. GEÇ KALMA VE ERKEN ÇIKMA HESABI ---
-            const expectedStartMins = parseTimeToMinutes(row.Mesai_Baslangic);
-            const expectedEndMins = parseTimeToMinutes(row.Mesai_Bitis);
-            
-            const ilkGirisDt = new Date(row.Ilk_Giris);
-            // KESİN ÇÖZÜM: node-mssql DB'deki ham saati UTC nesnesi olarak oluşturduğu için,
-            // +3 saat (Türkiye) eklemesini engellemek adına .getUTCHours() kullanmalıyız!
-            const actualStartMins = ilkGirisDt.getUTCHours() * 60 + ilkGirisDt.getUTCMinutes();
-            
-            if (actualStartMins > (expectedStartMins + (row.Tolerans_Dk || 0))) {
-                gecKalmaDk = actualStartMins - expectedStartMins;
-                durumText = 'Geç Kaldı';
-            }
-
-            if (row.Son_Cikis) {
-                const sonCikisDt = new Date(row.Son_Cikis);
-                // Burada da aynı şekilde .getUTCHours() kullanıyoruz.
-                const actualEndMins = sonCikisDt.getUTCHours() * 60 + sonCikisDt.getUTCMinutes();
+            // ... GEÇ KALMA ERKEN ÇIKMA HESAPLARI (Sadece çalışma günüyse cezai işlem yap)
+            if (!isHaftaTatili && row.Ilk_Giris) {
+                const expectedStartMins = parseTimeToMinutes(row.Mesai_Baslangic);
+                const expectedEndMins = parseTimeToMinutes(row.Mesai_Bitis);
                 
-                if (actualEndMins < expectedEndMins) {
-                    erkenCikmaDk = expectedEndMins - actualEndMins;
-                    durumText = durumText === 'Geç Kaldı' ? 'Geç Kaldı / Erken Çıktı' : 'Erken Çıktı';
+                const ilkGirisDt = new Date(row.Ilk_Giris);
+                const actualStartMins = ilkGirisDt.getUTCHours() * 60 + ilkGirisDt.getUTCMinutes();
+                
+                if (actualStartMins > (expectedStartMins + (row.Tolerans_Dk || 0))) {
+                    gecKalmaDk = actualStartMins - expectedStartMins;
+                    durumText = 'Geç Kaldı';
                 }
-            } else {
-                durumText = durumText === 'Geç Kaldı' ? 'Geç Kaldı / Çıkış Yok' : 'Çıkış Yok';
+                
+                if (row.Son_Cikis) {
+                    const sonCikisDt = new Date(row.Son_Cikis);
+                    const actualEndMins = sonCikisDt.getUTCHours() * 60 + sonCikisDt.getUTCMinutes();
+                    if (actualEndMins < expectedEndMins) {
+                        erkenCikmaDk = expectedEndMins - actualEndMins;
+                        durumText = durumText === 'Geç Kaldı' ? 'Geç Kaldı / Erken Çıktı' : 'Erken Çıktı';
+                    }
+                } else {
+                    durumText = durumText === 'Geç Kaldı' ? 'Geç Kaldı / Çıkış Yok' : 'Çıkış Yok';
+                }
             }
 
+            // --- MOLA VE YEMEK SÜRESİ HESABI ---
             const userLogs = allLogs.filter(l => l.RFID_Kart_No === row.RFID_Kart_No);
-            
             let yemekBaslangicTarihi = null;
             let molaBaslangicTarihi = null;
 
@@ -159,5 +180,4 @@ router.get('/reports/daily-attendance', verifyToken, async (req, res) => {
         res.status(500).json({ success: false, message: 'Puantaj hesaplanamadı.' });
     }
 });
-
 module.exports = router;

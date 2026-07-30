@@ -192,13 +192,13 @@ function Dashboard() {
             <Link to="/personel" className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-xl text-center text-sm transition-colors">
               Personel & Yetkiler
             </Link>
-            <Link to="/raporlar" className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-4 rounded-xl text-center text-sm transition-colors shadow-md">
+            <Link to="/reports" className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-4 rounded-xl text-center text-sm transition-colors shadow-md">
               Detaylı Puantaj Raporu
             </Link>
-            <Link to="/loglar" className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-xl text-center text-sm transition-colors">
+            <Link to="/logs" className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-xl text-center text-sm transition-colors">
               Geçiş Logları
             </Link>
-            <Link to="/vardiyalar" className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-xl text-center text-sm transition-colors">
+            <Link to="/shifts" className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-xl text-center text-sm transition-colors">
               Vardiya Yönetimi
             </Link>
           </div>

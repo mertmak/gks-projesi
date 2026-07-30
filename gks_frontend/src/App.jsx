@@ -8,6 +8,8 @@ import Dashboard from './pages/Dashboard';
 import PersonnelHub from './pages/PersonnelHub';
 import Shifts from './pages/Shifts';
 import Reports from './pages/Reports';
+import Leaves from './pages/leaves';
+import Simulation from './pages/Simulation';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'));
@@ -50,9 +52,11 @@ function App() {
           <Link to="/logs" className="text-slate-300 hover:text-cyan-400 transition-colors font-semibold tracking-wide">Loglar</Link>
           
           <Link to="/personel" className="text-slate-300 hover:text-cyan-400 transition-colors font-semibold tracking-wide">Personel Yönetimi</Link>          
-          
+          <Link to="/leaves" className="text-slate-300 hover:text-cyan-400 transition-colors font-semibold tracking-wide">İzinler</Link>          
+
           <Link to="/shifts" className="text-slate-300 hover:text-cyan-400 transition-colors font-semibold tracking-wide">Vardiya</Link>          
 
+          <Link to="/simulation" className="text-slate-300 hover:text-cyan-400 transition-colors font-semibold tracking-wide">Simülasyon</Link>
 
           <Link to="/reports" className="text-slate-300 hover:text-cyan-400 transition-colors font-semibold tracking-wide">Puantaj Raporu</Link>          
 
@@ -81,6 +85,10 @@ function App() {
           <Route path="/hesap-ekle" element={<HesapEkle />} />
           <Route path="/shifts" element={<Shifts />} />
           <Route path="/reports" element={<Reports />} />
+          <Route path="/leaves" element={<Leaves />} />
+          <Route path="/simulation" element={<Simulation />} />
+
+
           
           {/* Hatalı URL girilirse Ana Sayfaya atacak kural en sona alındı */}
           <Route path="*" element={<Navigate to="/" />} />

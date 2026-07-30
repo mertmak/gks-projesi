@@ -10,6 +10,8 @@ const userRoutes = require('./routes/userRoutes');
 const doorRoutes = require('./routes/doorRoutes');
 const shiftRoutes = require('./routes/shiftRoutes'); 
 const reportRoutes = require('./routes/reportRoutes');
+const leaveRoutes = require('./routes/leaveRoutes');
+const seederRoutes = require('./routes/seederRoutes');
 
 const app = express();
 
@@ -32,6 +34,8 @@ app.use('/api', userRoutes);
 app.use('/api', doorRoutes);
 app.use('/api', shiftRoutes); 
 app.use('/api', reportRoutes);
+app.use('/api', leaveRoutes);
+app.use('/api', seederRoutes);
 
 // Sunucuyu başlatma
 const PORT = process.env.PORT || 3000;
