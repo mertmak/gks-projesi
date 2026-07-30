@@ -1,0 +1,31 @@
+# 📦 Bağımlılıklar (Node.js ve React için)
+node_modules/
+
+# 🔐 Çevresel Değişkenler ve Gizli Bilgiler
+# (MS SQL Server şifreleri, API anahtarları vb. bu dosyalarda kalmalı)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 🏗️ React Derleme (Build) Çıktıları
+build/
+dist/
+
+# 📝 Log Dosyaları (Backend logları ve hata çıktıları)
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+*.log
+
+# 💻 Editör ve İşletim Sistemi Dosyaları
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 🧹 Geçici ve Cache Dosyaları
+.eslintcache
+.npm/
