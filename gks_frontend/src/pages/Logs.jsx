@@ -1,14 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
-import { customIcons, AG_GRID_LOCALE_TR } from '../utils/constants';
 import { socket } from '../api/socket';
 
-// AG Grid importları
-import { AgGridReact } from 'ag-grid-react';
-import { ModuleRegistry, AllCommunityModule, ValidationModule, themeQuartz } from 'ag-grid-community';
-import 'ag-grid-community/styles/ag-grid.css';
-
-ModuleRegistry.registerModules([AllCommunityModule, ValidationModule]);
+// YENİ ORTAK BİLEŞENLER
+import CustomDataGrid from '../components/CustomDataGrid';
+import AutocompleteSearch from '../components/AutocompleteSearch';
 
 function Logs() {
   const bugunTarihi = new Date();
@@ -23,7 +19,7 @@ function Logs() {
   // ARAMA ÖNERİLERİ İÇİN STATE
   const [suggestions, setSuggestions] = useState([]);
 
-  // --- AG GRID SÜTUN AYARLARI (useMemo İle Sabitlendi) ---
+  // --- AG GRID SÜTUN AYARLARI ---
   const colDefs = useMemo(() => [
     { field: 'ID', headerName: 'ID', width: 90 },
     { 
@@ -58,48 +54,25 @@ function Logs() {
     }
   ], []);
 
-  const defaultColDef = useMemo(() => ({
-    filter: true, 
-    sortable: true,
-    resizable: true, 
-    cellStyle: { borderRight: '1px solid #cbd5e1' }, 
-    headerClass: 'border-r border-slate-300' 
-  }), []);
-
-  // --- OTOMATİK TAMAMLAMA (TEKRARLARI GİZLEME MANTIĞI EKLENDİ) ---
+  // --- YENİ BİLEŞENE UYGUN LOKAL HIZLI ARAMA ---
   const handleSearchInputChange = async (e) => {
     const value = e.target.value;
     setFilters({ ...filters, arama: value }); 
-
     if (value.length >= 2) {
       try {
-        const response = await api.get('/logs', { params: { arama: value } });
-        
-        // Loglarda aynı kişi 50 kere geçiş yapmış olabilir, listede sadece 1 kere göstermek için filtreliyoruz:
-        const uniqueLogs = [];
-        const seenNames = new Set();
-        
-        response.data.forEach(log => {
-          const identifier = log.Ad_Soyad || log.RFID_Kart_No;
-          if (identifier && !seenNames.has(identifier)) {
-            seenNames.add(identifier);
-            uniqueLogs.push(log);
-          }
-        });
-
-        setSuggestions(uniqueLogs.slice(0, 6)); // En fazla 6 farklı sonuç göster
-      } catch (err) {
-        console.error("Öneriler çekilemedi:", err);
-      }
+        const response = await api.get('/users', { params: { arama: value } });
+        // Veriyi AutocompleteSearch bileşeninin okuyacağı formata haritalıyoruz
+        const formattedSuggestions = response.data.map(user => ({
+           label: user.Ad_Soyad,
+           subLabel: `Sicil: ${user.Sicil_No} | Kart: ${user.RFID_Kart_No || 'Yok'}`,
+           value: user.Ad_Soyad || user.RFID_Kart_No, // Arama kutusuna adı veya kartı yazılabilir
+           originalData: user 
+        }));
+        setSuggestions(formattedSuggestions.slice(0, 5)); 
+      } catch (err) {}
     } else {
       setSuggestions([]); 
     }
-  };
-
-  const handleSuggestionClick = (log) => {
-    // Listeden tıklanan kişinin adını veya kart numarasını arama kutusuna yazdır
-    setFilters({ ...filters, arama: log.Ad_Soyad || log.RFID_Kart_No });
-    setSuggestions([]);
   };
 
   const handleFetchData = async (e) => {
@@ -116,7 +89,7 @@ function Logs() {
     }
   };
 
-// --- YENİ YAPI: SOCKET.IO İLE ANLIK GÜNCELLEME ---
+  // --- YENİ YAPI: SOCKET.IO İLE ANLIK GÜNCELLEME ---
   useEffect(() => {
     const refreshLogs = async () => {
       if (!hasSearched) return;
@@ -145,68 +118,44 @@ function Logs() {
       <form onSubmit={handleFetchData} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4 shrink-0">
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1">Başlangıç Tarihi</label>
-          <input type="date" value={filters.baslangic} onChange={(e) => setFilters({...filters, baslangic: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+          <input type="date" value={filters.baslangic} onChange={(e) => setFilters({...filters, baslangic: e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1">Bitiş Tarihi</label>
-          <input type="date" value={filters.bitis} onChange={(e) => setFilters({...filters, bitis: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+          <input type="date" value={filters.bitis} onChange={(e) => setFilters({...filters, bitis: e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         
-        {/* YENİ EKLENEN AÇILIR MENÜLÜ ARAMA KUTUSU */}
-        <div className="relative">
-          <label className="block text-xs font-bold text-slate-600 mb-1">Ad Soyad / Kart No</label>
-          <input 
-            type="text" 
-            placeholder="İsim veya kart ara..." 
-            value={filters.arama} 
-            onChange={handleSearchInputChange} 
-            onBlur={() => setTimeout(() => setSuggestions([]), 200)} 
-            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all" 
-          />
-          
-          {suggestions.length > 0 && (
-            <ul className="absolute z-50 w-full bg-white border border-slate-200 shadow-2xl max-h-56 overflow-y-auto rounded-lg mt-1 left-0 divide-y divide-slate-100">
-              {suggestions.map((log) => (
-                <li 
-                  key={log.ID} 
-                  onClick={() => handleSuggestionClick(log)}
-                  className="px-4 py-2 hover:bg-blue-50 cursor-pointer transition-colors flex flex-col"
-                >
-                  <span className="font-bold text-slate-800 text-sm">{log.Ad_Soyad || 'Bilinmeyen Kişi'}</span>
-                  <span className="text-slate-500 text-xs">Kart: {log.RFID_Kart_No}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+        {/* YENİ ORTAK ARAMA KUTUSU EKLENDİ */}
+        <div className="relative z-50">
+           <AutocompleteSearch 
+             label="Ad Soyad / Kart No"
+             placeholder="İsim veya kart ara..."
+             value={filters.arama}
+             onChange={handleSearchInputChange}
+             suggestions={suggestions}
+             onSelect={(item) => {
+               setFilters({...filters, arama: item.value});
+               setSuggestions([]);
+             }}
+           />
         </div>
 
         <div className="flex items-end">
-          <button type="submit" disabled={loading} className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg transition-colors">
+          <button type="submit" disabled={loading} className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-lg transition-colors">
             {loading ? 'Aranıyor...' : 'Logları Getir'}
           </button>
         </div>
       </form>
 
-      {/* AG GRID TABLOSU */}
+      {/* YENİ ORTAK TABLO BİLEŞENİ EKLENDİ */}
       {hasSearched && (
         <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col p-2">
           <div className="p-2 text-sm font-bold text-slate-700">Arama Sonuçları ({logs.length} Kayıt)</div>
-          
-          <div className="flex-1 w-full h-full">
-            <AgGridReact
-              theme={themeQuartz} 
-              icons={customIcons} 
-              alwaysMultiSort={true} 
-              getRowId={(params) => params.data.ID} 
-              rowData={logs}
-              columnDefs={colDefs}
-              defaultColDef={defaultColDef} 
-              localeText={AG_GRID_LOCALE_TR}
-              pagination={true}
-              paginationPageSize={50} 
-              domLayout="normal"
-            />
-          </div>
+          <CustomDataGrid 
+            rowData={logs}
+            columnDefs={colDefs}
+            getRowId={(params) => params.data.ID}
+          />
         </div>
       )}
     </div>

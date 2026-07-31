@@ -17,6 +17,7 @@ import Simulation from './pages/Simulation';
 import Settings from './pages/Settings';
 import HesapEkle from './pages/HesapEkle';
 import Login from './pages/Login';
+import Overtimes from './pages/Overtimes';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'));
@@ -118,6 +119,7 @@ function App() {
           <DropdownMenu title="Vardiya & İzin" activePaths={['/vardiya', '/izinler']}>
             <DropdownItem to="/vardiya" label="Vardiya Yönetimi" />
             <DropdownItem to="/izinler" label="İzin ve Rapor Girişi" />
+            <DropdownItem to="/mesailer" label="Mesai Onay İşlemleri" /> {/* YENİ EKLENDİ */}
           </DropdownMenu>
 
           {/* PUANTAJ (Tek Sayfa) */}
@@ -188,6 +190,7 @@ function App() {
           {/* Vardiya ve İzin Rotaları */}
           <Route path="/vardiya" element={<Shifts />} />
           <Route path="/izinler" element={<Leaves />} />
+          <Route path="/mesailer" element={<Overtimes />} />
 
           {/* Puantaj Rotası */}
           <Route path="/puantaj" element={<Reports />} />

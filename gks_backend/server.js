@@ -16,6 +16,7 @@ const reportRoutes = require('./routes/reportRoutes');
 const leaveRoutes = require('./routes/leaveRoutes');
 const seederRoutes = require('./routes/seederRoutes'); // Yukarıdaki require alanlarına
 const errorHandler = require('./middlewares/errorHandler');
+const overtimeRoutes = require('./routes/overtimeRoutes'); // YENİ
 const app = express();
 
 // Temel Middleware'ler
@@ -39,6 +40,7 @@ app.use('/api', shiftRoutes);
 app.use('/api', reportRoutes);
 app.use('/api',leaveRoutes);
 app.use('/api', seederRoutes); // app.use alanlarına
+app.use('/api', overtimeRoutes); // YENİ
 
 const server = http.createServer(app);
 const io = socket.init(server);

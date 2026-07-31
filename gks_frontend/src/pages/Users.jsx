@@ -1,27 +1,19 @@
 import { useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
-import { customIcons, AG_GRID_LOCALE_TR } from '../utils/constants';
 import { socket } from '../api/socket';
-
-import { AgGridReact } from 'ag-grid-react';
-import { ModuleRegistry, AllCommunityModule, ValidationModule, themeQuartz } from 'ag-grid-community';
-import 'ag-grid-community/styles/ag-grid.css';
-
-ModuleRegistry.registerModules([AllCommunityModule, ValidationModule]);
+import CustomDataGrid from '../components/CustomDataGrid';
+import AutocompleteSearch from '../components/AutoCompleteSearch';
 
 function Users() {
-  const now = new Date();
-  const bitisTarihi = now.toISOString().split('T')[0];
-  const baslangicTarihi = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-  const [filters, setFilters] = useState({ baslangic: baslangicTarihi, bitis: bitisTarihi, arama: '' });
+  // YENİ: Başlangıç ve bitiş tarihleri yerine Durum, Departman ve Arama filtreleri eklendi
+  const [filters, setFilters] = useState({ durum: 'tumu', departman: '', arama: '' });
+  
   const [hasSearched, setHasSearched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState([]);
   
-  // ARAMA ÖNERİLERİ İÇİN STATE
   const [suggestions, setSuggestions] = useState([]);
-  
+  const [deptSuggestions, setDeptSuggestions] = useState([]);
   const [message, setMessage] = useState({ text: '', type: '' });
   
   // FORM / DÜZENLEME MODALI STATE'LERİ
@@ -63,33 +55,52 @@ function Users() {
       setLoading(false);
     }
   };
-
-  // FİLTRELEME ÇUBUĞU İÇİN ARAMA ÖNERİSİ GETİRME
   const handleSearchInputChange = async (e) => {
     const value = e.target.value;
     setFilters({ ...filters, arama: value }); 
     if (value.length >= 2) {
       try {
         const response = await api.get('/users', { params: { arama: value } });
-        setSuggestions(response.data.slice(0, 5)); // En fazla 5 sonuç göster
+        // YENİ: Veriyi AutocompleteSearch bileşeninin okuyacağı formata haritalıyoruz
+        const formattedSuggestions = response.data.map(user => ({
+           label: user.Ad_Soyad,
+           subLabel: `Sicil: ${user.Sicil_No} | ${user.Departman || 'Departman Yok'}`,
+           value: user.Ad_Soyad,
+           originalData: user // İleride objenin tamamı gerekirse diye tutuyoruz
+        }));
+        setSuggestions(formattedSuggestions.slice(0, 5)); 
       } catch (err) {}
     } else {
       setSuggestions([]); 
     }
   };
-
+ 
   const handleFetchData = async (e) => {
     e.preventDefault();
     setHasSearched(true);
-    setSuggestions([]); // Arama yapıldığında listeyi kapat
+    setSuggestions([]); 
     await fetchUsers();
   };
 
-  // SADECE RAKAM GİRİŞİNE İZİN VEREN FONKSİYON (YENİ)
   const handleNumericChange = (e) => {
     const { name, value } = e.target;
     const onlyNums = value.replace(/[^0-9]/g, ''); 
     setFormData({ ...formData, [name]: onlyNums });
+  };
+
+  const handleDeptSearchChange = async (e) => {
+    const value = e.target.value;
+    setFilters({ ...filters, departman: value }); 
+    if (value.length >= 2) {
+      try {
+        const response = await api.get('/users', { params: { departman: value } });
+        // Aynı departmandan 50 kişi dönse bile, Set objesi ile tekrar edenleri temizleyip tek isim haline getiriyoruz
+        const uniqueDepts = [...new Set(response.data.map(u => u.Departman).filter(d => d && d.trim() !== ''))];
+        setDeptSuggestions(uniqueDepts.slice(0, 5)); 
+      } catch (err) {}
+    } else {
+      setDeptSuggestions([]); 
+    }
   };
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -99,7 +110,6 @@ function Users() {
     e.preventDefault();
     setMessage({ text: '', type: '' });
 
-    // ZORUNLU UZUNLUK VE FORMAT KONTROLLERİ (YENİ)
     if (formData.tc.length !== 11) return setMessage({ text: 'HATA: TC Kimlik No tam 11 haneli olmalıdır.', type: 'error' });
     if (formData.sicil.length !== 5) return setMessage({ text: 'HATA: Sicil No tam 5 haneli olmalıdır.', type: 'error' });
     if (formData.rfid && formData.rfid.length !== 11) return setMessage({ text: 'HATA: RFID Kart No tam 11 haneli olmalıdır.', type: 'error' });
@@ -185,6 +195,7 @@ function Users() {
       setShowAuthModal(true);
     } catch (err) { alert("Yetki bilgileri alınırken hata oluştu."); }
   };
+  
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -204,6 +215,7 @@ function Users() {
       setShowShiftModal(true);
     } catch (err) { alert("Vardiya bilgileri alınırken hata oluştu."); }
   };
+  
   const handleShiftSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -214,14 +226,23 @@ function Users() {
   };
 
   // --- HIZLI ARAMA (TABLO DIŞI) ---
-  const handleQuickSearchChange = async (e) => {
+const handleQuickSearchChange = async (e) => {
     const value = e.target.value;
     setQuickSearch(value);
     setQuickSelectedUser(null);
     if (value.length >= 2) {
       try {
         const response = await api.get('/users', { params: { arama: value } });
-        setQuickSuggestions(response.data.slice(0, 5));
+        
+        // YENİ: Veriyi bileşenin anlayacağı formata çeviriyoruz
+        const formattedSuggestions = response.data.map(user => ({
+           label: user.Ad_Soyad,
+           subLabel: `Sicil: ${user.Sicil_No} | ${user.Departman || 'Departman Yok'}`,
+           value: user.Ad_Soyad,
+           originalData: user // Seçildiğinde tüm personel bilgisine ihtiyacımız var
+        }));
+        
+        setQuickSuggestions(formattedSuggestions.slice(0, 5));
       } catch (err) {}
     } else {
       setQuickSuggestions([]);
@@ -264,11 +285,10 @@ function Users() {
       flex: 1, 
       minWidth: 180, 
       filter: true,
-      // YENİ: Türkçe ve büyük/küçük harf duyarsız akıllı sıralama
-  comparator: (valueA, valueB) => {
-    return (valueA || '').localeCompare(valueB || '', 'tr', { sensitivity: 'base' });
-  }
-},
+      comparator: (valueA, valueB) => {
+        return (valueA || '').localeCompare(valueB || '', 'tr', { sensitivity: 'base' });
+      }
+    },
     { field: 'Departman', headerName: 'Departman', flex: 1, minWidth: 160, filter: true },
     { 
       field: 'Durum', headerName: 'Durum', width: 100,
@@ -291,13 +311,7 @@ function Users() {
     }
   ], []);
 
-  const defaultColDef = useMemo(() => ({
-    filter: true, sortable: true, resizable: true, 
-    cellStyle: { borderRight: '1px solid #cbd5e1' }, 
-    headerClass: 'border-r border-slate-300' 
-  }), []);
 
-// --- YENİ YAPI: SOCKET.IO İLE ANLIK GÜNCELLEME ---
   useEffect(() => {
     const refreshUsers = async () => {
       if (!hasSearched) return;
@@ -336,7 +350,7 @@ function Users() {
         </button>
       </div>
       
-      {/* ---------------- MODALLAR (Add/Edit, Çıkış, Yetki, Vardiya, Toplu) ---------------- */}
+      {/* ---------------- MODALLAR ---------------- */}
       {showAddEditModal && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-4xl border border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -344,8 +358,6 @@ function Users() {
               {isEditing ? 'Personel Düzenle' : 'Yeni Personel Kaydı'}
             </h3>
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              
-              {/* YENİ EKLENEN KISIM: handleNumericChange ve minLength Kullanımları */}
               <div><label className="block text-xs font-bold text-slate-500 mb-1">T.C. Kimlik No (11 Hane) *</label><input type="text" maxLength="11" minLength="11" name="tc" value={formData.tc} onChange={handleNumericChange} required placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono tracking-widest" /></div>
               <div><label className="block text-xs font-bold text-slate-500 mb-1">Ad Soyad *</label><input type="text" name="ad_soyad" value={formData.ad_soyad} onChange={handleChange} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
               <div><label className="block text-xs font-bold text-slate-500 mb-1">Kurum Sicil No (5 Hane) *</label><input type="text" maxLength="5" minLength="5" name="sicil" value={formData.sicil} onChange={handleNumericChange} required placeholder="5 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono tracking-widest" /></div>
@@ -366,7 +378,6 @@ function Users() {
         </div>
       )}
 
-      {/* (Diğer modalların kodları aynı bırakılmıştır: showExitModal, showAuthModal, showShiftModal, showBulkShiftModal) */}
       {showExitModal && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200">
@@ -457,29 +468,20 @@ function Users() {
 
       {/* --- HIZLI İŞLEM PANELİ (TABLO DIŞI) --- */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-6 md:items-end z-20 relative">
-        <div className="flex-1 relative">
-          <label className="block text-xs font-bold text-slate-600 mb-1">Hızlı İşlem (İsim veya Sicil No Ara)</label>
-          <input 
-            type="text" 
-            placeholder="Kişiyi bul ve işlemi yap..." 
-            value={quickSearch} 
-            onChange={handleQuickSearchChange} 
-            className="w-full px-4 py-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200" 
+        <div className="flex-1">
+          <AutocompleteSearch 
+            label="Hızlı İşlem (İsim veya Sicil No Ara)"
+            placeholder="Kişiyi bul ve işlemi yap..."
+            value={quickSearch}
+            onChange={handleQuickSearchChange}
+            suggestions={quickSuggestions}
+            onSelect={(item) => {
+              // item.originalData'yı fonksiyonda formatlarken içine koymuştuk
+              setQuickSelectedUser(item.originalData);
+              setQuickSearch(item.value);
+              setQuickSuggestions([]);
+            }}
           />
-          {quickSuggestions.length > 0 && (
-            <ul className="absolute z-50 w-full bg-white border border-slate-200 shadow-2xl rounded-lg mt-1 left-0 divide-y divide-slate-100">
-              {quickSuggestions.map((user) => (
-                <li 
-                  key={user.ID} 
-                  onClick={() => { setQuickSelectedUser(user); setQuickSearch(user.Ad_Soyad); setQuickSuggestions([]); }}
-                  className="px-4 py-3 hover:bg-blue-50 cursor-pointer flex flex-col"
-                >
-                  <span className="font-bold text-slate-800 text-sm">{user.Ad_Soyad}</span>
-                  <span className="text-slate-500 text-xs">Sicil: {user.Sicil_No} | {user.Departman || 'Departman Yok'}</span>
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
         
         {quickSelectedUser && (
@@ -500,14 +502,54 @@ function Users() {
         </div>
       </div>
 
-      {/* --- PERSONEL ARAMA FİLTRESİ --- */}
+{/* --- YENİ PERSONEL ARAMA FİLTRESİ --- */}
       <form onSubmit={handleFetchData} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4 items-end relative z-10">
-        <div><label className="block text-xs font-bold text-slate-600 mb-1">İşe Giriş (Başlangıç)</label><input type="date" value={filters.baslangic} onChange={(e) => setFilters({...filters, baslangic: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg" /></div>
-        <div><label className="block text-xs font-bold text-slate-600 mb-1">İşe Giriş (Bitiş)</label><input type="date" value={filters.bitis} onChange={(e) => setFilters({...filters, bitis: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg" /></div>
+        <div>
+          <label className="block text-xs font-bold text-slate-600 mb-1">Durum Filtresi</label>
+          <select 
+            value={filters.durum} 
+            onChange={(e) => setFilters({...filters, durum: e.target.value})} 
+            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          >
+            <option value="tumu">Tüm Personeller</option>
+            <option value="1">Sadece Aktif (Çalışan)</option>
+            <option value="0">Sadece Pasif (İşten Çıkan)</option>
+          </select>
+        </div>
         
-        {/* ARAMA KUTUSU VE ÖNERİLER (SUGGESTIONS) DROPDOWN'U */}
+        {/* YENİ: DEPARTMAN ARAMA VE ÖNERİ KUTUSU */}
         <div className="relative">
-          <label className="block text-xs font-bold text-slate-600 mb-1">Ad Soyad / Sicil No</label>
+          <label className="block text-xs font-bold text-slate-600 mb-1">Departman</label>
+          <input 
+            type="text" 
+            placeholder="Örn: Bilgi İşlem" 
+            value={filters.departman} 
+            onChange={handleDeptSearchChange} 
+            onBlur={() => setTimeout(() => setDeptSuggestions([]), 200)} 
+            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" 
+          />
+          
+          {deptSuggestions.length > 0 && (
+            <ul className="absolute z-50 w-full bg-white border border-slate-200 shadow-2xl rounded-lg mt-1 left-0 divide-y divide-slate-100 max-h-60 overflow-y-auto">
+              {deptSuggestions.map((dept, idx) => (
+                <li 
+                  key={idx} 
+                  onClick={() => { 
+                    setFilters({...filters, departman: dept}); 
+                    setDeptSuggestions([]); 
+                  }}
+                  className="px-4 py-3 hover:bg-blue-50 cursor-pointer flex flex-col"
+                >
+                  <span className="font-bold text-slate-800 text-sm">{dept}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        
+        {/* KİŞİ / SİCİL ARAMA KUTUSU */}
+        <div className="relative">
+          <label className="block text-xs font-bold text-slate-600 mb-1">Ad Soyad / Sicil No / TC</label>
           <input 
             type="text" 
             placeholder="Tabloyu filtrele..." 
@@ -537,7 +579,7 @@ function Users() {
         </div>
         
         <div>
-          <button type="submit" disabled={loading} className="w-full py-2 bg-slate-900 text-white font-bold text-sm rounded-lg hover:bg-slate-800">
+          <button type="submit" disabled={loading} className="w-full py-2 bg-slate-900 text-white font-bold text-sm rounded-lg hover:bg-slate-800 transition-colors shadow-sm">
              {loading ? 'Aranıyor...' : 'Personelleri Listele'}
           </button>
         </div>
@@ -548,8 +590,16 @@ function Users() {
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col p-2 h-[50vh]">
           <div className="p-2 text-sm font-bold text-slate-700">Arama Sonuçları ({users.length} Kayıt)</div>
           <div className="flex-1 w-full h-full">
-            <AgGridReact theme={themeQuartz} icons={customIcons} alwaysMultiSort={true} getRowId={(params) => params.data.ID} rowData={users} columnDefs={colDefs} defaultColDef={defaultColDef} localeText={AG_GRID_LOCALE_TR} pagination={true} paginationPageSize={50} domLayout="normal" />
-          </div>
+            <CustomDataGrid 
+            ref={gridRef}
+            rowData={overtimes}
+            columnDefs={colDefs}
+            getRowId={(params) => `${params.data.User_ID}-${params.data.TarihStr}`}
+            rowSelection="multiple"
+            onSelectionChanged={onSelectionChanged}
+            quickFilterText={quickFilterText}
+            rowHeight={60}
+          />          </div>
         </div>
       )}
     </div>

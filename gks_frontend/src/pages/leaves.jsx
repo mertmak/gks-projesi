@@ -1,13 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
-import { customIcons, AG_GRID_LOCALE_TR } from '../utils/constants';
-
-// AG Grid
-import { AgGridReact } from 'ag-grid-react';
-import { ModuleRegistry, AllCommunityModule, ValidationModule, themeQuartz } from 'ag-grid-community';
-import 'ag-grid-community/styles/ag-grid.css';
-
-ModuleRegistry.registerModules([AllCommunityModule, ValidationModule]);
+import AutocompleteSearch from '../components/AutocompleteSearch';
+import CustomDataGrid from '../components/CustomDataGrid';
 
 function Leaves() {
   const [leaves, setLeaves] = useState([]);
@@ -40,17 +34,24 @@ function Leaves() {
     fetchLeaves();
   }, []);
 
-  const handleSearchChange = async (e) => {
+  // --- BİLEŞENE UYGUN LOKAL HIZLI ARAMA ---
+  const handleSearchInputChange = async (e) => {
     const value = e.target.value;
-    setArama(value);
-    setSelectedUser(null);
+    setArama(value); 
     if (value.length >= 2) {
       try {
-        const res = await api.get('/users', { params: { arama: value } });
-        setSuggestions(res.data.slice(0, 5));
+        const response = await api.get('/users', { params: { arama: value } });
+        
+        const formattedSuggestions = response.data.map(user => ({
+           label: user.Ad_Soyad,
+           subLabel: `Sicil: ${user.Sicil_No} | ${user.Departman || 'Departman Yok'}`,
+           value: user.Ad_Soyad,
+           originalData: user 
+        }));
+        setSuggestions(formattedSuggestions.slice(0, 5)); 
       } catch (err) {}
     } else {
-      setSuggestions([]);
+      setSuggestions([]); 
     }
   };
 
@@ -133,8 +134,6 @@ function Leaves() {
     }
   ], []);
 
-  const defaultColDef = useMemo(() => ({ filter: true, sortable: true, resizable: true, headerClass: 'border-r border-slate-300' }), []);
-
   return (
     <div className="space-y-8 relative mt-8">
       <div>
@@ -154,27 +153,23 @@ function Leaves() {
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
           
           <div className="md:col-span-1 relative z-50">
-            <label className="block text-xs font-bold text-slate-500 mb-1">Personel Ara *</label>
-            <input 
-              type="text" placeholder="İsim veya Sicil yazın..." value={arama} 
-              onChange={handleSearchChange} required={!selectedUser}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+            {/* YENİ ORTAK ARAMA BİLEŞENİ */}
+            <AutocompleteSearch 
+              label="Personel Ara *"
+              placeholder="İsim veya Sicil yazın..."
+              value={arama}
+              onChange={handleSearchInputChange}
+              suggestions={suggestions}
+              onSelect={(item) => {
+                handleSelectUser(item.originalData);
+              }}
+              required={!selectedUser}
             />
-            {suggestions.length > 0 && (
-              <ul className="absolute w-full bg-white border border-slate-200 shadow-2xl rounded-lg mt-1 left-0 overflow-hidden divide-y divide-slate-100">
-                {suggestions.map((user) => (
-                  <li key={user.ID} onClick={() => handleSelectUser(user)} className="px-4 py-2 hover:bg-blue-50 cursor-pointer">
-                    <div className="font-bold text-slate-800 text-sm">{user.Ad_Soyad}</div>
-                    <div className="text-xs text-slate-500">{user.Sicil_No} | {user.Departman}</div>
-                  </li>
-                ))}
-              </ul>
-            )}
           </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-500 mb-1">İzin Türü *</label>
-            <select name="izin_turu" value={formData.izin_turu} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+            <select name="izin_turu" value={formData.izin_turu} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
               <option value="Yıllık İzin">Yıllık İzin</option>
               <option value="Raporlu">Sağlık Raporu</option>
               <option value="Mazeret İzni">Mazeret İzni</option>
@@ -184,21 +179,21 @@ function Leaves() {
 
           <div>
             <label className="block text-xs font-bold text-slate-500 mb-1">Başlangıç Tarihi *</label>
-            <input type="date" name="baslangic" value={formData.baslangic} onChange={handleChange} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+            <input type="date" name="baslangic" value={formData.baslangic} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
           </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-500 mb-1">Bitiş Tarihi *</label>
-            <input type="date" name="bitis" value={formData.bitis} onChange={handleChange} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+            <input type="date" name="bitis" value={formData.bitis} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
           </div>
 
           <div className="md:col-span-3">
             <label className="block text-xs font-bold text-slate-500 mb-1">Açıklama (Opsiyonel)</label>
-            <input type="text" name="aciklama" value={formData.aciklama} onChange={handleChange} placeholder="İzin sebebi, rapor numarası vb." className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+            <input type="text" name="aciklama" value={formData.aciklama} onChange={handleChange} placeholder="İzin sebebi, rapor numarası vb." className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
           </div>
 
           <div className="flex items-end h-full">
-            <button type="submit" disabled={loading} className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg transition-colors">
+            <button type="submit" disabled={loading} className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg transition-colors shadow-sm">
               {loading ? 'İşleniyor...' : 'İzni Kaydet'}
             </button>
           </div>
@@ -210,16 +205,13 @@ function Leaves() {
         <div className="p-2 text-sm font-bold text-slate-700 border-b border-slate-100 mb-2">
           Sistemde Kayıtlı İzinler ({leaves.length})
         </div>
+        
+        {/* YENİ ORTAK TABLO BİLEŞENİ */}
         <div className="flex-1 w-full h-full">
-          <AgGridReact
-            theme={themeQuartz} 
+          <CustomDataGrid 
             rowData={leaves}
             columnDefs={colDefs}
-            defaultColDef={defaultColDef}
-            pagination={true}
-            localeText={AG_GRID_LOCALE_TR}
-            paginationPageSize={50}
-            domLayout="normal"
+            getRowId={(params) => params.data.ID}
           />
         </div>
       </div>

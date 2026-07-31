@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import api from '../api/axios';
 
+// YENİ ORTAK BİLEŞEN
+import AutocompleteSearch from '../components/AutocompleteSearch';
+
 function PersonnelOperations() {
   // ARAMA STATE'LERİ
   const [arama, setArama] = useState('');
@@ -41,7 +44,7 @@ function PersonnelOperations() {
     fetchSystemData();
   }, []);
 
-  // ARAMA FONKSİYONU
+  // YENİ BİLEŞENE UYGUN ARAMA FONKSİYONU
   const handleSearchChange = async (e) => {
     const value = e.target.value;
     setArama(value);
@@ -49,7 +52,14 @@ function PersonnelOperations() {
     if (value.length >= 2) {
       try {
         const res = await api.get('/users', { params: { arama: value } });
-        setSuggestions(res.data.slice(0, 8));
+        // Veriyi AutocompleteSearch bileşeninin okuyacağı formata haritalıyoruz
+        const formattedSuggestions = res.data.map(user => ({
+           label: user.Ad_Soyad,
+           subLabel: `Sicil: ${user.Sicil_No} | ${user.Departman || 'Departman Yok'} - ${user.Durum ? 'Aktif' : 'Pasif'}`,
+           value: user.Ad_Soyad,
+           originalData: user 
+        }));
+        setSuggestions(formattedSuggestions.slice(0, 8));
       } catch (err) {}
     } else {
       setSuggestions([]);
@@ -89,22 +99,16 @@ function PersonnelOperations() {
     }
   };
 
-  // --- SADECE RAKAM GİRİŞİNE İZİN VEREN FONKSİYON ---
   const handleNumericChange = (e) => {
     const { name, value } = e.target;
-    // Harfleri temizler, sadece rakam bırakır
     const onlyNums = value.replace(/[^0-9]/g, ''); 
     setFormData({ ...formData, [name]: onlyNums });
   };
 
-  // --- SUBMIT İŞLEMLERİ ---
-
-  // 1. YENİ PERSONEL EKLEME
   const handleAddSubmit = async (e) => {
     e.preventDefault();
     setMessage({ text: '', type: '' });
 
-    // UZUNLUK KONTROLLERİ
     if (formData.tc.length !== 11) return setMessage({ text: 'HATA: TC Kimlik No tam 11 haneli olmalıdır.', type: 'error' });
     if (formData.sicil.length !== 5) return setMessage({ text: 'HATA: Sicil No tam 5 haneli olmalıdır.', type: 'error' });
     if (formData.rfid && formData.rfid.length !== 11) return setMessage({ text: 'HATA: RFID Kart No tam 11 haneli olmalıdır.', type: 'error' });
@@ -119,12 +123,10 @@ function PersonnelOperations() {
     }
   };
 
-  // 2. MEVCUT PERSONELİ DÜZENLEME
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     setMessage({ text: '', type: '' });
 
-    // UZUNLUK KONTROLLERİ
     if (formData.tc.length !== 11) return setMessage({ text: 'HATA: TC Kimlik No tam 11 haneli olmalıdır.', type: 'error' });
     if (formData.sicil.length !== 5) return setMessage({ text: 'HATA: Sicil No tam 5 haneli olmalıdır.', type: 'error' });
     if (formData.rfid && formData.rfid.length !== 11) return setMessage({ text: 'HATA: RFID Kart No tam 11 haneli olmalıdır.', type: 'error' });
@@ -199,39 +201,16 @@ function PersonnelOperations() {
         </div>
       )}
 
-      {/* ARAMA ÇUBUĞU */}
+      {/* YENİ ORTAK ARAMA ÇUBUĞU */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative z-20">
-        <label className="block text-sm font-bold text-slate-700 mb-2">İşlem Yapılacak Personeli Ara (Ad Soyad veya Sicil)</label>
-        <div className="relative">
-          <input 
-            type="text" 
-            placeholder="Örn: Mert Mak..." 
-            value={arama} 
-            onChange={handleSearchChange} 
-            className="w-full px-4 py-3 text-lg border border-slate-300 rounded-xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all" 
-          />
-          {suggestions.length > 0 && (
-            <ul className="absolute z-50 w-full bg-white border border-slate-200 shadow-2xl rounded-xl mt-2 left-0 divide-y divide-slate-100 overflow-hidden">
-              {suggestions.map((user) => (
-                <li 
-                  key={user.ID} 
-                  onClick={() => handleSelectUser(user)}
-                  className="px-5 py-4 hover:bg-blue-50 cursor-pointer flex justify-between items-center transition-colors"
-                >
-                  <div>
-                    <span className="font-bold text-slate-800 block text-lg">{user.Ad_Soyad}</span>
-                    <span className="text-slate-500 text-sm">Sicil: {user.Sicil_No} | {user.Departman || 'Departman Yok'}</span>
-                  </div>
-                  {user.Durum ? (
-                    <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-bold">Aktif</span>
-                  ) : (
-                    <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full font-bold">Pasif</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <AutocompleteSearch 
+           label="İşlem Yapılacak Personeli Ara (Ad Soyad veya Sicil)"
+           placeholder="Örn: Mert Mak..."
+           value={arama}
+           onChange={handleSearchChange}
+           suggestions={suggestions}
+           onSelect={(item) => handleSelectUser(item.originalData)}
+        />
         {loading && <div className="text-sm font-bold text-blue-600 mt-2 animate-pulse">Personel verileri yükleniyor...</div>}
       </div>
 
@@ -290,15 +269,12 @@ function PersonnelOperations() {
         </div>
       )}
 
-      {/* ---------------- MODALLAR ---------------- */}
-
       {/* 0. YENİ PERSONEL EKLE MODALI */}
       {activeModal === 'add' && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-4xl border border-slate-200 max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-black text-slate-800 mb-4">Yeni Personel Kaydı</h3>
             <form onSubmit={handleAddSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* YENİ EKLENEN KISIM: handleNumericChange ve minLength Kullanımları */}
               <div><label className="block text-xs font-bold text-slate-500 mb-1">T.C. Kimlik No (11 Hane)*</label><input type="text" maxLength="11" minLength="11" name="tc" value={formData.tc || ''} onChange={handleNumericChange} required placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" /></div>
               <div><label className="block text-xs font-bold text-slate-500 mb-1">Ad Soyad *</label><input type="text" name="ad_soyad" value={formData.ad_soyad || ''} onChange={(e) => setFormData({...formData, ad_soyad: e.target.value})} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
               <div><label className="block text-xs font-bold text-slate-500 mb-1">Kurum Sicil No (5 Hane)*</label><input type="text" maxLength="5" minLength="5" name="sicil" value={formData.sicil || ''} onChange={handleNumericChange} required placeholder="5 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" /></div>
@@ -322,7 +298,6 @@ function PersonnelOperations() {
           <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-4xl border border-slate-200 max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-black text-slate-800 mb-4">Kimlik Bilgilerini Düzenle</h3>
             <form onSubmit={handleEditSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* YENİ EKLENEN KISIM: handleNumericChange ve minLength Kullanımları */}
               <div><label className="block text-xs font-bold text-slate-500 mb-1">T.C. Kimlik No (11 Hane)*</label><input type="text" maxLength="11" minLength="11" name="tc" value={formData.tc || ''} onChange={handleNumericChange} required placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" /></div>
               <div><label className="block text-xs font-bold text-slate-500 mb-1">Ad Soyad *</label><input type="text" name="ad_soyad" value={formData.ad_soyad || ''} onChange={(e) => setFormData({...formData, ad_soyad: e.target.value})} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
               <div><label className="block text-xs font-bold text-slate-500 mb-1">Kurum Sicil No (5 Hane)*</label><input type="text" maxLength="5" minLength="5" name="sicil" value={formData.sicil || ''} onChange={handleNumericChange} required placeholder="5 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" /></div>

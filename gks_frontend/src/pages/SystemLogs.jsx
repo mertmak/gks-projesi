@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
 import { customIcons, AG_GRID_LOCALE_TR } from '../utils/constants';
 import { socket } from '../api/socket';
+import AutocompleteSearch from '../components/AutoCompleteSearch';
+
 
 // AG Grid importları ve Yeni Tema Motoru
 import { AgGridReact } from 'ag-grid-react';
@@ -61,32 +63,23 @@ function SystemLogs() {
   }), []);
 
   // --- OTOMATİK TAMAMLAMA VE TEKRARLARI GİZLEME ---
-  const handleSearchInputChange = async (e) => {
+const handleSearchInputChange = async (e) => {
     const value = e.target.value;
-    setFilters({ ...filters, arama: value });
-
+    setFilters({ ...filters, arama: value }); 
     if (value.length >= 2) {
       try {
-        const response = await api.get('/system-logs', { params: { arama: value } });
-        
-        // Aynı personelin birden fazla logu varsa menüde sadece 1 kez göstermek için:
-        const uniqueLogs = [];
-        const seenNames = new Set();
-        
-        response.data.forEach(log => {
-          const identifier = log.Personel_Ad || log.Sicil_No;
-          if (identifier && !seenNames.has(identifier)) {
-            seenNames.add(identifier);
-            uniqueLogs.push(log);
-          }
-        });
-
-        setSuggestions(uniqueLogs.slice(0, 6)); // En fazla 6 farklı sonuç göster
-      } catch (err) {
-        console.error("Öneriler çekilemedi:", err);
-      }
+        const response = await api.get('/users', { params: { arama: value } });
+        // YENİ: Veriyi AutocompleteSearch bileşeninin okuyacağı formata haritalıyoruz
+        const formattedSuggestions = response.data.map(user => ({
+           label: user.Ad_Soyad,
+           subLabel: `Sicil: ${user.Sicil_No} | ${user.Departman || 'Departman Yok'}`,
+           value: user.Ad_Soyad,
+           originalData: user // İleride objenin tamamı gerekirse diye tutuyoruz
+        }));
+        setSuggestions(formattedSuggestions.slice(0, 5)); 
+      } catch (err) {}
     } else {
-      setSuggestions([]);
+      setSuggestions([]); 
     }
   };
 

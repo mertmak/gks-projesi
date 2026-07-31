@@ -178,12 +178,30 @@ router.post('/users/bulk/status', verifyToken, async (req, res) => {
 
 router.get('/users', verifyToken, async (req, res) => {
     try {
-        const { baslangic, bitis, arama } = req.query;
+        // YENİ FİLTRELER: durum, departman, arama
+        const { durum, departman, arama } = req.query;
+        
         let query = `SELECT TOP 2000 * FROM Users WHERE 1=1`;
         const request = new sql.Request();
-        if (baslangic) { query += ` AND (Ise_Giris_Tarihi >= @baslangic OR Ise_Giris_Tarihi IS NULL)`; request.input('baslangic', sql.Date, baslangic); }
-        if (bitis) { query += ` AND (Ise_Giris_Tarihi <= @bitis OR Ise_Giris_Tarihi IS NULL)`; request.input('bitis', sql.Date, bitis); }
-        if (arama) { query += ` AND (Ad_Soyad LIKE @arama OR Sicil_No LIKE @arama OR TC_Kimlik LIKE @arama)`; request.input('arama', sql.NVarChar, `%${arama}%`); }
+        
+        // Aktif/Pasif Durum Filtresi
+        if (durum !== undefined && durum !== 'tumu' && durum !== '') { 
+            query += ` AND Durum = @durum`; 
+            request.input('durum', sql.Bit, durum === '1' ? 1 : 0); 
+        }
+        
+        // Departman Filtresi
+        if (departman && departman.trim() !== '') { 
+            query += ` AND Departman LIKE @departman`; 
+            request.input('departman', sql.NVarChar, `%${departman}%`); 
+        }
+        
+        // İsim, Soyisim, Sicil veya TC Filtresi
+        if (arama && arama.trim() !== '') { 
+            query += ` AND (Ad_Soyad LIKE @arama OR Sicil_No LIKE @arama OR TC_Kimlik LIKE @arama)`; 
+            request.input('arama', sql.NVarChar, `%${arama}%`); 
+        }
+        
         query += ` ORDER BY ID DESC`;
         const result = await request.query(query);
         res.json(result.recordset);

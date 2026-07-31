@@ -1,14 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
-import { customIcons, AG_GRID_LOCALE_TR } from '../utils/constants';
 import { socket } from '../api/socket';
-
-// AG Grid importları ve Yeni Tema Motoru
-import { AgGridReact } from 'ag-grid-react';
-import { ModuleRegistry, AllCommunityModule, ValidationModule, themeQuartz } from 'ag-grid-community';
-import 'ag-grid-community/styles/ag-grid.css';
-
-ModuleRegistry.registerModules([AllCommunityModule, ValidationModule]);
+import CustomDataGrid from '../components/CustomDataGrid';
+import AutocompleteSearch from '../components/AutoCompleteSearch';
 
 // MSSQL'den gelen saat verisini (Örn: 1970-01-01T09:00:00.000Z veya 09:00:00) HH:mm formatına çeviren yardımcı fonksiyon
 const formatTimeForInput = (val) => {
@@ -81,17 +75,23 @@ function Shifts() {
   }, []);
 
   // --- OTOMATİK TAMAMLAMA ---
-  const handleSearchInputChange = (e) => {
+const handleSearchInputChange = async (e) => {
     const value = e.target.value;
-    setArama(value);
-
+    setFilters({ ...filters, arama: value }); 
     if (value.length >= 2) {
-      const filteredSuggestions = shifts.filter(shift => 
-        shift.Vardiya_Adi.toLowerCase().includes(value.toLowerCase())
-      );
-      setSuggestions(filteredSuggestions.slice(0, 5));
+      try {
+        const response = await api.get('/users', { params: { arama: value } });
+        // YENİ: Veriyi AutocompleteSearch bileşeninin okuyacağı formata haritalıyoruz
+        const formattedSuggestions = response.data.map(user => ({
+           label: user.Ad_Soyad,
+           subLabel: `Sicil: ${user.Sicil_No} | ${user.Departman || 'Departman Yok'}`,
+           value: user.Ad_Soyad,
+           originalData: user // İleride objenin tamamı gerekirse diye tutuyoruz
+        }));
+        setSuggestions(formattedSuggestions.slice(0, 5)); 
+      } catch (err) {}
     } else {
-      setSuggestions([]);
+      setSuggestions([]); 
     }
   };
 
@@ -260,11 +260,6 @@ function Shifts() {
     }
   ], []);
 
-  const defaultColDef = useMemo(() => ({
-    filter: true, sortable: true, resizable: true,
-    cellStyle: { borderRight: '1px solid #cbd5e1' },
-    headerClass: 'border-r border-slate-300'
-  }), []);
 
   return (
     <div className="space-y-8 relative mt-8">
@@ -383,10 +378,15 @@ function Shifts() {
         </div>
         
         <div className="flex-1 w-full h-full">
-          <AgGridReact
-            theme={themeQuartz} icons={customIcons} alwaysMultiSort={true} getRowId={(params) => params.data.ID} 
-            rowData={filteredShifts} columnDefs={colDefs} defaultColDef={defaultColDef} pagination={true}
-            localeText={AG_GRID_LOCALE_TR} paginationPageSize={50} domLayout="normal"
+          <CustomDataGrid 
+            ref={gridRef}
+            rowData={overtimes}
+            columnDefs={colDefs}
+            getRowId={(params) => `${params.data.User_ID}-${params.data.TarihStr}`}
+            rowSelection="multiple"
+            onSelectionChanged={onSelectionChanged}
+            quickFilterText={quickFilterText}
+            rowHeight={60}
           />
         </div>
       </div>

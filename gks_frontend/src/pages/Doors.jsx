@@ -1,14 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
-import { customIcons, AG_GRID_LOCALE_TR } from '../utils/constants';
 import { socket } from '../api/socket';
-
-// AG Grid importları ve Yeni Tema Motoru
-import { AgGridReact } from 'ag-grid-react';
-import { ModuleRegistry, AllCommunityModule, ValidationModule, themeQuartz } from 'ag-grid-community';
-import 'ag-grid-community/styles/ag-grid.css';
-
-ModuleRegistry.registerModules([AllCommunityModule, ValidationModule]);
+import CustomDataGrid from '../components/CustomDataGrid';
+import AutocompleteSearch from '../components/AutocompleteSearch';
 
 function Doors() {
   const [doors, setDoors] = useState([]);
@@ -19,7 +13,7 @@ function Doors() {
   const [arama, setArama] = useState('');
   const [suggestions, setSuggestions] = useState([]);
 
-  // DÜZENLEME (EDIT) VE EKLEME STATE'LERİ (YENİ: kapi_turu eklendi)
+  // DÜZENLEME (EDIT) VE EKLEME STATE'LERİ
   const [isEditing, setIsEditing] = useState(false);
   const [editId, setEditId] = useState(null);
   const [formData, setFormData] = useState({ kapi_adi: '', departman: '', konum: '', kapi_turu: 'İç Geçiş' });
@@ -40,7 +34,7 @@ function Doors() {
     fetchDoors();
   }, []);
 
- // --- YENİ YAPI: SOCKET.IO İLE ANLIK GÜNCELLEME ---
+  // --- YENİ YAPI: SOCKET.IO İLE ANLIK GÜNCELLEME ---
   useEffect(() => {
     const refreshDoors = async () => {
       try {
@@ -58,18 +52,25 @@ function Doors() {
     };
   }, []);
 
-  // --- OTOMATİK TAMAMLAMA ---
+  // --- BİLEŞENE UYGUN LOKAL KAPILARDA ARAMA ---
   const handleSearchInputChange = (e) => {
     const value = e.target.value;
-    setArama(value);
-
+    setArama(value); 
+    
     if (value.length >= 2) {
-      const filteredSuggestions = doors.filter(door => 
-        door.Kapi_Adi.toLowerCase().includes(value.toLowerCase())
-      );
-      setSuggestions(filteredSuggestions.slice(0, 5));
+      const lowerVal = value.toLowerCase();
+      // Halihazırda çekilmiş olan kapılar içinde (frontend'de) filtreleme yapıyoruz
+      const matchedDoors = doors.filter(door => door.Kapi_Adi.toLowerCase().includes(lowerVal));
+      
+      const formattedSuggestions = matchedDoors.map(door => ({
+         label: door.Kapi_Adi,
+         subLabel: `Tür: ${door.Kapi_Turu} | Departman: ${door.Departman}`,
+         value: door.Kapi_Adi,
+         originalData: door
+      }));
+      setSuggestions(formattedSuggestions.slice(0, 5)); 
     } else {
-      setSuggestions([]);
+      setSuggestions([]); 
     }
   };
 
@@ -78,6 +79,7 @@ function Doors() {
     setSuggestions([]);
   };
 
+  // Tabloda sadece aranan kapıları göstermek için
   const filteredDoors = useMemo(() => {
     if (!arama) return doors;
     return doors.filter(door => door.Kapi_Adi.toLowerCase().includes(arama.toLowerCase()));
@@ -201,14 +203,6 @@ function Doors() {
     }
   ], []);
 
-  const defaultColDef = useMemo(() => ({
-    filter: true,
-    sortable: true,
-    resizable: true,
-    cellStyle: { borderRight: '1px solid #cbd5e1' },
-    headerClass: 'border-r border-slate-300'
-  }), []);
-
   return (
     <div className="space-y-8 relative mt-8">
       
@@ -243,7 +237,6 @@ function Doors() {
             />
           </div>
 
-          {/* YENİ EKLENEN KAPI TÜRÜ SEÇİMİ */}
           <div>
             <label className="block text-xs font-bold text-slate-500 mb-1">Kapı Türü (İşlevi) *</label>
             <select 
@@ -309,50 +302,30 @@ function Doors() {
       {/* ARAMA VE TABLO BÖLÜMÜ */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col p-4 h-[60vh]">
         
-        {/* ARAMA KUTUSU */}
-        <div className="mb-4 relative w-full md:w-1/3">
-          <label className="block text-xs font-bold text-slate-600 mb-1">Kapı Ara</label>
-          <input 
-            type="text" 
-            placeholder="Kapı adı yazın..." 
-            value={arama} 
-            onChange={handleSearchInputChange} 
-            onBlur={() => setTimeout(() => setSuggestions([]), 200)} 
-            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all" 
+        {/* YENİ ORTAK ARAMA KUTUSU */}
+        <div className="mb-4 relative w-full md:w-1/3 z-50">
+          <AutocompleteSearch 
+            label="Kapı Ara"
+            placeholder="Kapı adı yazın..."
+            value={arama}
+            onChange={handleSearchInputChange}
+            suggestions={suggestions}
+            onSelect={(item) => {
+              handleSuggestionClick(item.originalData);
+            }}
           />
-          
-          {suggestions.length > 0 && (
-            <ul className="absolute z-50 w-full bg-white border border-slate-200 shadow-2xl max-h-56 overflow-y-auto rounded-lg mt-1 left-0 divide-y divide-slate-100">
-              {suggestions.map((door) => (
-                <li 
-                  key={door.ID} 
-                  onClick={() => handleSuggestionClick(door)}
-                  className="px-4 py-2 hover:bg-blue-50 cursor-pointer transition-colors"
-                >
-                  <span className="font-bold text-slate-800 text-sm">{door.Kapi_Adi}</span>
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
 
         <div className="p-2 text-sm font-bold text-slate-700 bg-slate-50 border-t border-x border-slate-200 rounded-t-lg">
           Kayıtlı Kapılar ({filteredDoors.length} Kayıt)
         </div>
         
+        {/* YENİ ORTAK TABLO BİLEŞENİ */}
         <div className="flex-1 w-full h-full">
-          <AgGridReact
-            theme={themeQuartz} 
-            icons={customIcons} 
-            alwaysMultiSort={true} 
-            getRowId={(params) => params.data.ID} 
+          <CustomDataGrid 
             rowData={filteredDoors}
             columnDefs={colDefs}
-            defaultColDef={defaultColDef}
-            pagination={true}
-            localeText={AG_GRID_LOCALE_TR}
-            paginationPageSize={50}
-            domLayout="normal"
+            getRowId={(params) => params.data.ID}
           />
         </div>
       </div>

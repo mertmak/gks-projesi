@@ -1,14 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
-import { customIcons, AG_GRID_LOCALE_TR } from '../utils/constants';
 import { socket } from '../api/socket';
 
-// AG Grid importları ve Yeni Tema Motoru
-import { AgGridReact } from 'ag-grid-react';
-import { ModuleRegistry, AllCommunityModule, ValidationModule, themeQuartz } from 'ag-grid-community';
-import 'ag-grid-community/styles/ag-grid.css';
-
-ModuleRegistry.registerModules([AllCommunityModule, ValidationModule]);
+// YENİ ORTAK BİLEŞENLER EKLENDİ
+import CustomDataGrid from '../components/CustomDataGrid';
+import AutocompleteSearch from '../components/AutocompleteSearch';
 
 function DoorLogs() {
   const bugunTarihi = new Date();
@@ -20,10 +16,9 @@ function DoorLogs() {
   const [hasSearched, setHasSearched] = useState(false);
   const [loading, setLoading] = useState(false);
   
-  // ARAMA ÖNERİLERİ İÇİN STATE
   const [suggestions, setSuggestions] = useState([]);
 
-  // --- AG GRID SÜTUN AYARLARI (useMemo İle Sabitlendi) ---
+  // --- AG GRID SÜTUN AYARLARI ---
   const colDefs = useMemo(() => [
     { 
       field: 'Tarih', 
@@ -53,48 +48,32 @@ function DoorLogs() {
     { field: 'Detay', headerName: 'Detay', flex: 1, minWidth: 200, wrapText: true, autoHeight: true }
   ], []);
 
-  const defaultColDef = useMemo(() => ({
-    filter: true,
-    sortable: true, // SIRALAMA AKTİF
-    resizable: true,
-    cellStyle: { borderRight: '1px solid #cbd5e1' },
-    headerClass: 'border-r border-slate-300'
-  }), []);
-
-  // --- OTOMATİK TAMAMLAMA VE TEKRARLARI GİZLEME ---
+  // YENİ BİLEŞENE UYGUN ARAMA (Yanlışlıkla users olan api kopyası door-logs için düzeltildi)
   const handleSearchInputChange = async (e) => {
     const value = e.target.value;
-    setFilters({ ...filters, arama: value });
-
+    setFilters({ ...filters, arama: value }); 
     if (value.length >= 2) {
       try {
         const response = await api.get('/door-logs', { params: { arama: value } });
         
-        // Kapı adı veya işlemi yapan kişiye göre filtreleyip tekrar edenleri çıkarıyoruz:
+        // Tekrar eden kapı isimlerini veya işlemleri filtreleyerek öneri oluşturur
         const uniqueLogs = [];
-        const seenNames = new Set();
-        
+        const seen = new Set();
         response.data.forEach(log => {
-          const identifier = log.Kapi_Adi; 
-          if (identifier && !seenNames.has(identifier)) {
-            seenNames.add(identifier);
-            uniqueLogs.push(log);
+          if(log.Kapi_Adi && !seen.has(log.Kapi_Adi)) {
+             seen.add(log.Kapi_Adi);
+             uniqueLogs.push({
+                label: log.Kapi_Adi,
+                subLabel: `Örnek İşlem: ${log.Islem_Tipi}`,
+                value: log.Kapi_Adi
+             });
           }
         });
-
-        setSuggestions(uniqueLogs.slice(0, 6)); // En fazla 6 farklı sonuç göster
-      } catch (err) {
-        console.error("Öneriler çekilemedi:", err);
-      }
+        setSuggestions(uniqueLogs.slice(0, 5)); 
+      } catch (err) {}
     } else {
-      setSuggestions([]);
+      setSuggestions([]); 
     }
-  };
-
-  const handleSuggestionClick = (log) => {
-    // Listeden tıklanan kapı adını arama kutusuna yazdır
-    setFilters({ ...filters, arama: log.Kapi_Adi });
-    setSuggestions([]);
   };
 
   const handleFetchData = async (e) => {
@@ -111,23 +90,17 @@ function DoorLogs() {
     }
   };
 
-// --- YENİ YAPI: SOCKET.IO İLE ANLIK GÜNCELLEME ---
   useEffect(() => {
     const refreshLogs = async () => {
       if (!hasSearched) return;
       try {
         const response = await api.get('/door-logs', { params: filters });
         setLogs(response.data); 
-      } catch (err) {
-        console.error("Socket güncelleme hatası:", err);
-      }
+      } catch (err) {}
     };
 
     socket.on('new_door_log', refreshLogs);
-
-    return () => {
-      socket.off('new_door_log', refreshLogs);
-    };
+    return () => { socket.off('new_door_log', refreshLogs); };
   }, [hasSearched, filters]);
 
   return (
@@ -136,39 +109,26 @@ function DoorLogs() {
       <form onSubmit={handleFetchData} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4 shrink-0">
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1">Başlangıç Tarihi</label>
-          <input type="date" value={filters.baslangic} onChange={(e) => setFilters({...filters, baslangic: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+          <input type="date" value={filters.baslangic} onChange={(e) => setFilters({...filters, baslangic: e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1">Bitiş Tarihi</label>
-          <input type="date" value={filters.bitis} onChange={(e) => setFilters({...filters, bitis: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+          <input type="date" value={filters.bitis} onChange={(e) => setFilters({...filters, bitis: e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         
-        {/* YENİ EKLENEN AÇILIR MENÜLÜ ARAMA KUTUSU */}
+        {/* YENİ ORTAK ARAMA BİLEŞENİ */}
         <div className="relative">
-          <label className="block text-xs font-bold text-slate-600 mb-1">Kapı Adı / İşlem</label>
-          <input 
-            type="text" 
-            placeholder="Ara..." 
-            value={filters.arama} 
-            onChange={handleSearchInputChange} 
-            onBlur={() => setTimeout(() => setSuggestions([]), 200)} 
-            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all" 
+          <AutocompleteSearch 
+             label="Kapı Adı / İşlem Ara"
+             placeholder="Örn: Ana Giriş..."
+             value={filters.arama}
+             onChange={handleSearchInputChange}
+             suggestions={suggestions}
+             onSelect={(item) => {
+               setFilters({...filters, arama: item.value});
+               setSuggestions([]);
+             }}
           />
-          
-          {suggestions.length > 0 && (
-            <ul className="absolute z-50 w-full bg-white border border-slate-200 shadow-2xl max-h-56 overflow-y-auto rounded-lg mt-1 left-0 divide-y divide-slate-100">
-              {suggestions.map((log) => (
-                <li 
-                  key={log.ID || Math.random()} 
-                  onClick={() => handleSuggestionClick(log)}
-                  className="px-4 py-2 hover:bg-blue-50 cursor-pointer transition-colors flex flex-col"
-                >
-                  <span className="font-bold text-slate-800 text-sm">{log.Kapi_Adi || 'Bilinmeyen Kapı'}</span>
-                  <span className="text-slate-500 text-xs">İşlem Tipi: {log.Islem_Tipi}</span>
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
 
         <div className="flex items-end">
@@ -178,28 +138,18 @@ function DoorLogs() {
         </div>
       </form>
 
-      {/* AG GRID TABLOSU */}
+      {/* YENİ ORTAK AG GRID BİLEŞENİ */}
       {hasSearched && (
         <div className="flex-1 overflow-hidden border border-slate-300 rounded-2xl bg-white shadow-sm flex flex-col p-2 h-[60vh]">
           <div className="p-2 text-sm font-bold text-slate-700">
             Arama Sonuçları ({logs.length} Kayıt)
           </div>
           
-          <div className="flex-1 w-full h-full">
-            <AgGridReact
-              theme={themeQuartz} 
-              icons={customIcons} 
-              alwaysMultiSort={true} 
-              getRowId={(params) => params.data.ID} // SATIR KİMLİK BELİRLEYİCİ
-              rowData={logs}
-              columnDefs={colDefs}
-              defaultColDef={defaultColDef}
-              pagination={true}
-              localeText={AG_GRID_LOCALE_TR}
-              paginationPageSize={50}
-              domLayout="normal"
-            />
-          </div>
+          <CustomDataGrid 
+             rowData={logs}
+             columnDefs={colDefs}
+             getRowId={(params) => params.data.ID}
+          />
         </div>
       )}
     </div>

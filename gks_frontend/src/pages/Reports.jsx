@@ -1,22 +1,15 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import api from '../api/axios';
-import { customIcons, AG_GRID_LOCALE_TR } from '../utils/constants';
 
-// AG Grid importları ve Yeni Tema Motoru
-import { AgGridReact } from 'ag-grid-react';
-import { ModuleRegistry, AllCommunityModule, ValidationModule, themeQuartz } from 'ag-grid-community';
-import 'ag-grid-community/styles/ag-grid.css';
-
-ModuleRegistry.registerModules([AllCommunityModule, ValidationModule]);
+// YENİ ORTAK BİLEŞEN
+import CustomDataGrid from '../components/CustomDataGrid';
 
 // SQL'den gelen tarih (Date) veya saat (Time) verisini HH:mm formatına dönüştüren yardımcı fonksiyon
 const extractTime = (val) => {
   if (!val) return '-';
-  
   if (typeof val === 'string' && val.includes('T')) {
     return val.split('T')[1].substring(0, 5);
   }
-  
   return val.substring(0, 5); 
 };
 
@@ -57,7 +50,6 @@ function Reports() {
   };
 
   // --- AG GRID SÜTUN AYARLARI ---
-// --- AG GRID SÜTUN AYARLARI ---
   const colDefs = useMemo(() => [
     { field: 'Sicil_No', headerName: 'Sicil No', width: 110, pinned: 'left' },
     { field: 'Ad_Soyad', headerName: 'Ad Soyad', flex: 1, minWidth: 160, pinned: 'left', cellClass: 'font-bold text-slate-800' },
@@ -66,7 +58,6 @@ function Reports() {
     { 
       headerName: 'Tarih', 
       valueGetter: () => {
-        // YYYY-MM-DD formatını DD.MM.YYYY formatına çeviriyoruz
         return selectedDate.split('-').reverse().join('.');
       },
       width: 110,
@@ -78,7 +69,19 @@ function Reports() {
       field: 'Vardiya_Adi', 
       headerName: 'Vardiya', 
       width: 150,
-      cellRenderer: (params) => params.value || <span className="text-slate-400 italic">Atanmamış</span>
+      cellRenderer: (params) => params.value ? <span className="font-bold text-slate-800">{params.value}</span> : <span className="text-slate-400 italic">Atanmamış</span>
+    },
+    // YENİ EKLENEN VARDİYA SAATLERİ SÜTUNU
+    { 
+      headerName: 'Vardiya Saatleri', 
+      valueGetter: (params) => {
+        if (!params.data.Vardiya_Adi) return '-';
+        const bas = extractTime(params.data.Mesai_Baslangic);
+        const bit = extractTime(params.data.Mesai_Bitis);
+        return `${bas} - ${bit}`;
+      },
+      width: 140,
+      cellClass: 'font-mono text-slate-600 font-bold'
     },
     { 
       headerName: 'Gerçekleşen', 
@@ -107,6 +110,22 @@ function Reports() {
       cellRenderer: (params) => {
         const dk = params.value;
         if (dk > 0) return <span className="text-orange-500 font-black">{dk}dk</span>;
+        return <span className="text-slate-300">-</span>;
+      }
+    },
+    { 
+      field: 'Fazla_Mesai_Dk', 
+      headerName: 'Hak Edilen Mesai', 
+      width: 140,
+      cellRenderer: (params) => {
+        const dk = params.value;
+        // Backend'den artık sadece onaylıysa sıfırdan büyük bir değer geliyor.
+        if (dk > 0) {
+          const saat = Math.floor(dk / 60);
+          const dakika = dk % 60;
+          const text = saat > 0 ? `${saat}s ${dakika}d` : `${dk}dk`;
+          return <span className="text-blue-600 font-black">+{text}</span>;
+        }
         return <span className="text-slate-300">-</span>;
       }
     },
@@ -152,8 +171,6 @@ function Reports() {
         else if (text.includes('Geç Kaldı') || text.includes('Devamsız') || text.includes('Mola Aşımı')) colorClass = 'bg-red-100 text-red-700 border border-red-200';
         else if (text.includes('Erken Çıktı')) colorClass = 'bg-orange-100 text-orange-700 border border-orange-200';
         else if (text.includes('Çıkış Yok') || text.includes('Çıkış Okutulmadı')) colorClass = 'bg-yellow-100 text-yellow-700 border border-yellow-200';
-        // YENİ EKLENEN İZİN RENKLENDİRMELERİ
-        // Reports.jsx içindeki Durum Özeti hücresi
         else if (text === 'Hafta Tatili') colorClass = 'bg-slate-100 text-slate-500 border border-slate-200';
         else if (text === 'Tatil Mesaisi') colorClass = 'bg-teal-100 text-teal-700 border border-teal-200';
         else if (text === 'Yıllık İzin' || text === 'Mazeret İzni' || text === 'Ücretsiz İzin') colorClass = 'bg-blue-100 text-blue-700 border border-blue-200';
@@ -161,16 +178,8 @@ function Reports() {
 
         return <span className={`px-2 py-1 rounded-full text-[11px] font-bold ${colorClass}`}>{text}</span>;
       }
-    }
-  ], [selectedDate]); // DİKKAT: Buraya selectedDate eklendi!
-
-  const defaultColDef = useMemo(() => ({
-    filter: true,
-    sortable: true,
-    resizable: true,
-    cellStyle: { borderRight: '1px solid #cbd5e1' },
-    headerClass: 'border-r border-slate-300 text-xs'
-  }), []);
+    },    
+  ], [selectedDate]); 
 
   return (
     <div className="space-y-6 relative mt-8">
@@ -237,26 +246,16 @@ function Reports() {
         </div>
       </div>
 
-      {/* AG GRID TABLOSU */}
+      {/* YENİ ORTAK TABLO BİLEŞENİ */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col p-4 h-[60vh]">
-        <div className="flex-1 w-full h-full">
-          <AgGridReact
-            ref={gridRef}
-            theme={themeQuartz} 
-            icons={customIcons} 
-            alwaysMultiSort={true} 
-            getRowId={(params) => params.data.User_ID} 
-            rowData={reportData}
-            columnDefs={colDefs}
-            defaultColDef={defaultColDef}
-            pagination={true}
-            localeText={AG_GRID_LOCALE_TR}
-            paginationPageSize={50}
-            domLayout="normal"
-          />
-        </div>
+        <CustomDataGrid 
+          ref={gridRef}
+          rowData={reportData}
+          columnDefs={colDefs}
+          getRowId={(params) => params.data.User_ID}
+          rowHeight={60}
+        />
       </div>
-
     </div>
   );
 }
