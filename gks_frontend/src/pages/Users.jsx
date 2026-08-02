@@ -43,10 +43,11 @@ function Users() {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const response = await api.get('/users', { params: filters });
-      setUsers(response.data);
+      const response = await api.get('/users', { params: { ...filters, limit: 500 } });
+      // API artık { data, pagination } döndürüyor; eski { data: [] } formatını da destekle
+      setUsers(response.data?.data ?? response.data);
     } catch (err) {
-      console.error("Veri çekilemedi:", err);
+      // hata state kullanıcıya gösterilmez, tablo boş kalır
     } finally {
       setLoading(false);
     }
@@ -57,14 +58,15 @@ function Users() {
     setFilters({ ...filters, arama: value }); 
     if (value.length >= 2) {
       try {
-        const response = await api.get('/users', { params: { arama: value } });
-        const formattedSuggestions = response.data.map(user => ({
+        const response = await api.get('/users', { params: { arama: value, limit: 5 } });
+        const users = response.data?.data ?? response.data;
+        const formattedSuggestions = users.map(user => ({
            label: user.Ad_Soyad,
            subLabel: `Sicil: ${user.Sicil_No} | ${user.Departman || 'Departman Yok'}`,
            value: user.Ad_Soyad,
-           originalData: user 
+           originalData: user
         }));
-        setSuggestions(formattedSuggestions.slice(0, 5)); 
+        setSuggestions(formattedSuggestions.slice(0, 5));
       } catch (err) {}
     } else {
       setSuggestions([]); 
@@ -76,9 +78,10 @@ function Users() {
     setFilters({ ...filters, departman: value }); 
     if (value.length >= 2) {
       try {
-        const response = await api.get('/users', { params: { departman: value } });
-        const uniqueDepts = [...new Set(response.data.map(u => u.Departman).filter(d => d && d.trim() !== ''))];
-        
+        const response = await api.get('/users', { params: { departman: value, limit: 100 } });
+        const usersData = response.data?.data ?? response.data;
+        const uniqueDepts = [...new Set(usersData.map(u => u.Departman).filter(d => d && d.trim() !== ''))];
+
         const formattedDepts = uniqueDepts.map(dept => ({
            label: dept,
            value: dept
@@ -230,12 +233,13 @@ function Users() {
     setQuickSelectedUser(null);
     if (value.length >= 2) {
       try {
-        const response = await api.get('/users', { params: { arama: value } });
-        const formattedSuggestions = response.data.map(user => ({
+        const response = await api.get('/users', { params: { arama: value, limit: 8 } });
+        const usersArr = response.data?.data ?? response.data;
+        const formattedSuggestions = usersArr.map(user => ({
            label: user.Ad_Soyad,
            subLabel: `Sicil: ${user.Sicil_No} | ${user.Departman || 'Departman Yok'}`,
            value: user.Ad_Soyad,
-           originalData: user 
+           originalData: user
         }));
         setQuickSuggestions(formattedSuggestions.slice(0, 5));
       } catch (err) {}
@@ -298,9 +302,9 @@ function Users() {
   useEffect(() => {
     const refreshUsers = async () => {
       if (!hasSearched) return;
-      try { 
-        const response = await api.get('/users', { params: filters }); 
-        setUsers(response.data); 
+      try {
+        const response = await api.get('/users', { params: { ...filters, limit: 500 } });
+        setUsers(response.data?.data ?? response.data);
       } catch (err) {}
     };
 

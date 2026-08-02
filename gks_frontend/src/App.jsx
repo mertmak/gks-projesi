@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
+import { connectSocket, disconnectSocket } from './api/socket';
 
 // Sayfa Bileşenleri İçe Aktarımı
 import Dashboard from './pages/Dashboard';
@@ -24,6 +25,7 @@ function App() {
   const location = useLocation();
 
   const handleLogout = () => {
+    disconnectSocket();
     localStorage.removeItem('token');
     setIsAuthenticated(false);
   };

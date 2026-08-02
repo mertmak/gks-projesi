@@ -1,28 +1,43 @@
 require('dotenv').config();
 const sql = require('mssql');
+const logger = require('./utils/appLogger');
+
 const config = {
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     server: process.env.DB_SERVER,
     database: process.env.DB_NAME,
+    pool: {
+        max: 10,
+        min: 2,
+        idleTimeoutMillis: 30000,
+    },
     options: {
-        encrypt: false, // Docker üzerinde lokal çalıştığımız için şifrelemeyi kapatıyoruz
-        trustServerCertificate: true // SSL sertifikası zorunluluğunu atlıyoruz
+        encrypt: false,
+        trustServerCertificate: true
     }
 };
+
+let pool = null;
 
 const connectDB = async () => {
-    try{
-        const pool = await sql.connect(config);
-        console.log('MSSQL Veritabanına başarıyla bağlandı. ');
+    if (pool) return pool;
+    try {
+        pool = await sql.connect(config);
+        logger.info('MSSQL Veritabanına başarıyla bağlandı.');
+        pool.on('error', (err) => {
+            logger.error('Veritabanı havuz hatası: ' + err.message);
+        });
         return pool;
-    }catch(err){
-        console.error('Veritabanı bağlantı hatası: ',err.message);
+    } catch (err) {
+        logger.error('Veritabanı bağlantı hatası: ' + err.message);
+        process.exit(1);
     }
-    process.exit(1);
 };
 
-module.exports = {
-    sql,
-    connectDB
+const getPool = () => {
+    if (!pool) throw new Error('Veritabanı bağlantısı henüz başlatılmadı. connectDB() önce çağrılmalıdır.');
+    return pool;
 };
+
+module.exports = { sql, connectDB, getPool };

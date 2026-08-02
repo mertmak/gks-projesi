@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import api from '../api/axios';
 
-// ORTAK BİLEŞENLER
-import AutocompleteSearch from '../components/AutocompleteSearch';
-import Modal from '../components/Modal'; // YENİ: Modal bileşeni
-import AlertMessage from '../components/AlertMessage';
+import AutocompleteSearch   from '../components/AutocompleteSearch';
+import Modal                from '../components/Modal';
+import AlertMessage         from '../components/AlertMessage';
+import PersonnelFormFields  from '../components/personnel/PersonnelFormFields';
 
 function PersonnelOperations() {
   const [arama, setArama] = useState('');
@@ -43,12 +43,13 @@ function PersonnelOperations() {
     
     if (value.length >= 2) {
       try {
-        const res = await api.get('/users', { params: { arama: value } });
-        const formattedSuggestions = res.data.map(user => ({
+        const res = await api.get('/users', { params: { arama: value, limit: 8 } });
+        const users = res.data?.data ?? res.data;
+        const formattedSuggestions = users.map(user => ({
            label: user.Ad_Soyad,
            subLabel: `Sicil: ${user.Sicil_No} | ${user.Departman || 'Departman Yok'} - ${user.Durum ? 'Aktif' : 'Pasif'}`,
            value: user.Ad_Soyad,
-           originalData: user 
+           originalData: user
         }));
         setSuggestions(formattedSuggestions.slice(0, 8));
       } catch (err) {}
@@ -247,14 +248,11 @@ function PersonnelOperations() {
       {/* --- MODALLAR --- */}
       <Modal isOpen={activeModal === 'add'} onClose={() => setActiveModal(null)} title="Yeni Personel Kaydı" maxWidth="max-w-4xl">
         <form onSubmit={handleAddSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div><label className="block text-xs font-bold text-slate-500 mb-1">T.C. Kimlik No (11 Hane)*</label><input type="text" maxLength="11" minLength="11" name="tc" value={formData.tc || ''} onChange={handleNumericChange} required placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" /></div>
-          <div><label className="block text-xs font-bold text-slate-500 mb-1">Ad Soyad *</label><input type="text" name="ad_soyad" value={formData.ad_soyad || ''} onChange={(e) => setFormData({...formData, ad_soyad: e.target.value})} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-          <div><label className="block text-xs font-bold text-slate-500 mb-1">Kurum Sicil No (5 Hane)*</label><input type="text" maxLength="5" minLength="5" name="sicil" value={formData.sicil || ''} onChange={handleNumericChange} required placeholder="5 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" /></div>
-          <div><label className="block text-xs font-bold text-slate-500 mb-1">RFID Kart No (11 Hane)</label><input type="text" maxLength="11" minLength="11" name="rfid" value={formData.rfid || ''} onChange={handleNumericChange} placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg bg-slate-50 outline-none font-mono" /></div>
-          
-          <div><label className="block text-xs font-bold text-slate-500 mb-1">Şirket / Taşeron</label><input type="text" name="sirket" value={formData.sirket || ''} onChange={(e) => setFormData({...formData, sirket: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
-          <div><label className="block text-xs font-bold text-slate-500 mb-1">Departman & Görev</label><input type="text" name="departman" value={formData.departman || ''} onChange={(e) => setFormData({...formData, departman: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
-          <div><label className="block text-xs font-bold text-slate-500 mb-1">İşe Giriş Tarihi</label><input type="date" name="ise_giris" value={formData.ise_giris || ''} onChange={(e) => setFormData({...formData, ise_giris: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
+          <PersonnelFormFields
+            formData={formData}
+            onChange={(e) => setFormData({ ...formData, [e.target.name]: e.target.value })}
+            onNumericChange={handleNumericChange}
+          />
           <div className="md:col-span-2 flex justify-end space-x-3 mt-4">
             <button type="button" onClick={() => setActiveModal(null)} className="px-6 py-2 bg-slate-200 font-bold rounded-lg hover:bg-slate-300">İptal</button>
             <button type="submit" className="px-6 py-2 font-bold rounded-lg bg-slate-900 text-white hover:bg-slate-800">Personeli Kaydet</button>
@@ -264,13 +262,11 @@ function PersonnelOperations() {
       
       <Modal isOpen={activeModal === 'edit'} onClose={() => setActiveModal(null)} title="Kimlik Bilgilerini Düzenle" maxWidth="max-w-4xl">
         <form onSubmit={handleEditSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div><label className="block text-xs font-bold text-slate-500 mb-1">T.C. Kimlik No (11 Hane)*</label><input type="text" maxLength="11" minLength="11" name="tc" value={formData.tc || ''} onChange={handleNumericChange} required placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" /></div>
-          <div><label className="block text-xs font-bold text-slate-500 mb-1">Ad Soyad *</label><input type="text" name="ad_soyad" value={formData.ad_soyad || ''} onChange={(e) => setFormData({...formData, ad_soyad: e.target.value})} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-          <div><label className="block text-xs font-bold text-slate-500 mb-1">Kurum Sicil No (5 Hane)*</label><input type="text" maxLength="5" minLength="5" name="sicil" value={formData.sicil || ''} onChange={handleNumericChange} required placeholder="5 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" /></div>
-          <div><label className="block text-xs font-bold text-slate-500 mb-1">RFID Kart No (11 Hane)</label><input type="text" maxLength="11" minLength="11" name="rfid" value={formData.rfid || ''} onChange={handleNumericChange} placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg bg-slate-50 outline-none font-mono" /></div>
-          
-          <div><label className="block text-xs font-bold text-slate-500 mb-1">Şirket / Taşeron</label><input type="text" name="sirket" value={formData.sirket || ''} onChange={(e) => setFormData({...formData, sirket: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
-          <div><label className="block text-xs font-bold text-slate-500 mb-1">Departman & Görev</label><input type="text" name="departman" value={formData.departman || ''} onChange={(e) => setFormData({...formData, departman: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
+          <PersonnelFormFields
+            formData={formData}
+            onChange={(e) => setFormData({ ...formData, [e.target.name]: e.target.value })}
+            onNumericChange={handleNumericChange}
+          />
           <div className="md:col-span-2 flex justify-end space-x-3 mt-4">
             <button type="button" onClick={() => setActiveModal(null)} className="px-6 py-2 bg-slate-200 font-bold rounded-lg hover:bg-slate-300">İptal</button>
             <button type="submit" className="px-6 py-2 font-bold rounded-lg bg-blue-600 text-white hover:bg-blue-700">Değişiklikleri Kaydet</button>

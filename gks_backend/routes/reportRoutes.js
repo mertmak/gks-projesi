@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { sql } = require('../db');
 const { verifyToken } = require('../middlewares/auth');
-const { parseTimeToMinutes } = require('../utils/dateHelper');
+const logger = require('../utils/appLogger');
+const { parseTimeToMinutes, diffMinutes } = require('../utils/dateHelper');
 
 // GÜNCELLENEN YARDIMCI FONKSİYON: Saat bilgisini dakikaya çevirir
 // GÜNLÜK PUANTAJ VE MOLA HESAPLAMA MOTORU
@@ -91,10 +92,7 @@ const userQuery = `
                 } else {
                     durumText = 'Tatil Mesaisi';
                     if (row.Son_Cikis) {
-                        // Tatilde geldiği tüm süre mesai sayılır
-                        const startMins = new Date(row.Ilk_Giris).getTime() / 60000;
-                        const endMins = new Date(row.Son_Cikis).getTime() / 60000;
-                        fazlaMesaiDk = Math.floor(endMins - startMins);
+                        fazlaMesaiDk = diffMinutes(row.Ilk_Giris, row.Son_Cikis);
                     } else {
                         durumText = 'Tatil Mesaisi / Çıkış Yok';
                     }
@@ -119,12 +117,11 @@ const userQuery = `
                 if (row.Son_Cikis) {
                     const sonCikisDt = new Date(row.Son_Cikis);
                     const actualEndMins = sonCikisDt.getUTCHours() * 60 + sonCikisDt.getUTCMinutes();
-                    
+
                     if (actualEndMins < expectedEndMins) {
                         erkenCikmaDk = expectedEndMins - actualEndMins;
                         durumText = durumText === 'Geç Kaldı' ? 'Geç Kaldı / Erken Çıktı' : 'Erken Çıktı';
                     } else if (actualEndMins > expectedEndMins) {
-                        // YENİ: Çıkması gereken saatten geç çıkmışsa, aradaki fark fazla mesaidir
                         fazlaMesaiDk = actualEndMins - expectedEndMins;
                     }
                 } else {
@@ -144,15 +141,15 @@ const userQuery = `
                 if (kapi === 'Yemekhane Giriş') {
                     yemekBaslangicTarihi = zaman;
                 } else if (kapi === 'Yemekhane Çıkış' && yemekBaslangicTarihi) {
-                    toplamYemekDk += Math.floor((zaman - yemekBaslangicTarihi) / 60000);
-                    yemekBaslangicTarihi = null; 
+                    toplamYemekDk += diffMinutes(yemekBaslangicTarihi, zaman);
+                    yemekBaslangicTarihi = null;
                 }
 
                 if (kapi === 'Mola / Sigara Alanı') {
                     if (!molaBaslangicTarihi) molaBaslangicTarihi = zaman;
                 } else if (molaBaslangicTarihi && kapi !== 'Mola / Sigara Alanı') {
-                    toplamMolaDk += Math.floor((zaman - molaBaslangicTarihi) / 60000);
-                    molaBaslangicTarihi = null; 
+                    toplamMolaDk += diffMinutes(molaBaslangicTarihi, zaman);
+                    molaBaslangicTarihi = null;
                 }
             });
 
@@ -188,7 +185,7 @@ const userQuery = `
 
         res.json(reportData);
     } catch (err) {
-        console.error("Günlük Puantaj Hesaplama Hatası:", err);
+        logger.error('Günlük Puantaj Hesaplama Hatası: ' + err.message);
         res.status(500).json({ success: false, message: 'Puantaj hesaplanamadı.' });
     }
 });

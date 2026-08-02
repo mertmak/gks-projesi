@@ -2,8 +2,10 @@ const express = require('express');
 const router = express.Router();
 const { sql } = require('../db');
 const { verifyToken, verifyAdmin } = require('../middlewares/auth');
+const { validate, schemas } = require('../middlewares/validate');
 const { addSystemLog } = require('../utils/logger');
 const socket = require('../utils/socket');
+const logger = require('../utils/appLogger');
 
 // Generate Unique Sistem ID Yardımcı Fonksiyonu
 const generateUniqueSistemId = async () => {
@@ -23,7 +25,7 @@ const generateUniqueSistemId = async () => {
 // 1. BÖLÜM: TOPLU İŞLEMLER (Önce Çalışmalı Ki Rota Çakışması Olmasın)
 // ============================================
 
-router.post('/users/bulk/shift', verifyToken, async (req, res) => {
+router.post('/users/bulk/shift', verifyToken, validate(schemas.bulkShiftSchema), async (req, res) => {
     const aktifKullanici = req.user?.kullanici_adi || req.user?.username || 'Sistem Yetkilisi';
     const { hedef_turu, hedef_deger, vardiya_id } = req.body;
 
@@ -79,7 +81,7 @@ router.post('/users/bulk/shift', verifyToken, async (req, res) => {
     }
 });
 
-router.post('/users/bulk/doors', verifyToken, async (req, res) => {
+router.post('/users/bulk/doors', verifyToken, validate(schemas.bulkDoorsSchema), async (req, res) => {
     const aktifKullanici = req.user?.kullanici_adi || req.user?.username || 'Sistem Yetkilisi';
     const { hedef_turu, hedef_deger, doorIds } = req.body;
 
@@ -126,7 +128,7 @@ router.post('/users/bulk/doors', verifyToken, async (req, res) => {
     }
 });
 
-router.post('/users/bulk/status', verifyToken, async (req, res) => {
+router.post('/users/bulk/status', verifyToken, validate(schemas.bulkStatusSchema), async (req, res) => {
     const aktifKullanici = req.user?.kullanici_adi || req.user?.username || 'Sistem Yetkilisi';
     const { hedef_turu, hedef_deger, durum, cikis_tarihi, cikis_nedeni } = req.body;
 
@@ -176,40 +178,110 @@ router.post('/users/bulk/status', verifyToken, async (req, res) => {
 // 2. BÖLÜM: BİREYSEL İŞLEMLER (GET, POST, :id)
 // ============================================
 
+/**
+ * @swagger
+ * /users:
+ *   get:
+ *     tags: [Personel]
+ *     summary: Personel listesi (sayfalama destekli)
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 100, maximum: 500 }
+ *       - in: query
+ *         name: durum
+ *         schema: { type: string, enum: ['0','1','tumu'] }
+ *       - in: query
+ *         name: departman
+ *         schema: { type: string }
+ *       - in: query
+ *         name: arama
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Sayfalanmış personel listesi
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:       { type: array, items: { type: object } }
+ *                 pagination: { $ref: '#/components/schemas/Pagination' }
+ */
 router.get('/users', verifyToken, async (req, res) => {
     try {
-        // YENİ FİLTRELER: durum, departman, arama
         const { durum, departman, arama } = req.query;
-        
-        let query = `SELECT TOP 2000 * FROM Users WHERE 1=1`;
-        const request = new sql.Request();
-        
-        // Aktif/Pasif Durum Filtresi
-        if (durum !== undefined && durum !== 'tumu' && durum !== '') { 
-            query += ` AND Durum = @durum`; 
-            request.input('durum', sql.Bit, durum === '1' ? 1 : 0); 
+        const page  = Math.max(1, parseInt(req.query.page)  || 1);
+        const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 100));
+        const offset = (page - 1) * limit;
+
+        const request  = new sql.Request();
+        const countReq = new sql.Request();
+        let where = `WHERE 1=1`;
+
+        if (durum !== undefined && durum !== 'tumu' && durum !== '') {
+            const durumVal = durum === '1' ? 1 : 0;
+            where += ` AND Durum = @durum`;
+            request.input('durum', sql.Bit, durumVal);
+            countReq.input('durum', sql.Bit, durumVal);
         }
-        
-        // Departman Filtresi
-        if (departman && departman.trim() !== '') { 
-            query += ` AND Departman LIKE @departman`; 
-            request.input('departman', sql.NVarChar, `%${departman}%`); 
+        if (departman && departman.trim() !== '') {
+            where += ` AND Departman LIKE @departman`;
+            request.input('departman', sql.NVarChar, `%${departman}%`);
+            countReq.input('departman', sql.NVarChar, `%${departman}%`);
         }
-        
-        // İsim, Soyisim, Sicil veya TC Filtresi
-        if (arama && arama.trim() !== '') { 
-            query += ` AND (Ad_Soyad LIKE @arama OR Sicil_No LIKE @arama OR TC_Kimlik LIKE @arama)`; 
-            request.input('arama', sql.NVarChar, `%${arama}%`); 
+        if (arama && arama.trim() !== '') {
+            where += ` AND (Ad_Soyad LIKE @arama OR Sicil_No LIKE @arama OR TC_Kimlik LIKE @arama)`;
+            request.input('arama', sql.NVarChar, `%${arama}%`);
+            countReq.input('arama', sql.NVarChar, `%${arama}%`);
         }
-        
-        query += ` ORDER BY ID DESC`;
-        const result = await request.query(query);
-        res.json(result.recordset);
+
+        request.input('offset', sql.Int, offset);
+        request.input('limit',  sql.Int, limit);
+
+        const [dataResult, countResult] = await Promise.all([
+            request.query(`SELECT * FROM Users ${where} ORDER BY ID DESC OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`),
+            countReq.query(`SELECT COUNT(*) AS toplam FROM Users ${where}`)
+        ]);
+
+        res.json({
+            data: dataResult.recordset,
+            pagination: { page, limit, total: countResult.recordset[0].toplam, totalPages: Math.ceil(countResult.recordset[0].toplam / limit) }
+        });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Personeller getirilemedi.' });
     }
 });
 
+/**
+ * @swagger
+ * /users:
+ *   post:
+ *     tags: [Personel]
+ *     summary: Yeni personel ekle
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [ad_soyad, tc, sicil]
+ *             properties:
+ *               ad_soyad:   { type: string }
+ *               tc:         { type: string, pattern: '^\d{11}$' }
+ *               sicil:      { type: string, pattern: '^\d{5}$' }
+ *               rfid:       { type: string, pattern: '^\d{11}$' }
+ *               sirket:     { type: string }
+ *               departman:  { type: string }
+ *               gorev:      { type: string }
+ *               ise_giris:  { type: string, format: date }
+ *     responses:
+ *       200: { description: Personel eklendi }
+ *       400: { description: Geçersiz veri veya mükerrer kayıt }
+ */
 router.post('/users', verifyToken, async (req, res) => {
     const aktifKullanici = req.user?.kullanici_adi || 'Sistem Yetkilisi';
     const { ad_soyad, rfid, tc, sicil, sirket, departman, gorev, ise_giris } = req.body;
@@ -392,7 +464,7 @@ router.post('/users/:id/doors', verifyToken, async (req, res) => {
         socket.getIO().emit('system_updated');
         res.json({ success: true, message: 'Yetkiler başarıyla kaydedildi.' });
     } catch (err) {
-        console.error("Yetki atama hatası:", err);
+        logger.error('Yetki atama hatası: ' + err.message);
         res.status(500).json({ success: false, message: 'Yetkiler güncellenemedi.' });
     }
 });
@@ -413,7 +485,7 @@ router.get('/users/:id/shift', verifyToken, async (req, res) => {
             res.json({ vardiya_id: '' }); 
         }
     } catch (err) {
-        console.error("Personel vardiya çekme hatası:", err);
+        logger.error('Personel vardiya çekme hatası: ' + err.message);
         res.status(500).json({ success: false, message: 'Vardiya bilgisi getirilemedi.' });
     }
 });
@@ -454,7 +526,7 @@ router.post('/users/:id/shift', verifyToken, async (req, res) => {
         socket.getIO().emit('system_updated');
         res.json({ success: true, message: 'Vardiya ataması başarıyla güncellendi.' });
     } catch (err) {
-        console.error("Vardiya atama hatası:", err);
+        logger.error('Vardiya atama hatası: ' + err.message);
         res.status(500).json({ success: false, message: 'Vardiya ataması yapılamadı.' });
     }
 });

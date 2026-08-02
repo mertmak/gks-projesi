@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import api from '../api/axios';
+import { connectSocket } from '../api/socket';
 
 function Login({ setAuth }) {
   const [username, setUsername] = useState('');
@@ -30,6 +31,7 @@ function Login({ setAuth }) {
         const response = await api.post('/login', { username, password });
         if (response.data.success) {
           localStorage.setItem('token', response.data.token);
+          connectSocket();
           setAuth(true);
         }
       }

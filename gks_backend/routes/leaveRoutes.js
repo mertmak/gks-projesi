@@ -2,7 +2,9 @@ const express = require('express');
 const router = express.Router();
 const { sql } = require('../db');
 const { verifyToken, verifyAdmin } = require('../middlewares/auth');
+const { validate, schemas } = require('../middlewares/validate');
 const { addSystemLog } = require('../utils/logger');
+const logger = require('../utils/appLogger');
 
 // 1. TÜM İZİNLERİ GETİR
 router.get('/leaves', verifyToken, async (req, res) => {
@@ -17,13 +19,13 @@ router.get('/leaves', verifyToken, async (req, res) => {
         const result = await sql.query(query);
         res.json(result.recordset);
     } catch (err) {
-        console.error("İzinleri çekme hatası:", err);
+        logger.error('İzinleri çekme hatası: ' + err.message);
         res.status(500).json({ success: false, message: 'İzinler getirilemedi.' });
     }
 });
 
 // 2. YENİ İZİN EKLE
-router.post('/leaves', verifyToken, async (req, res) => {
+router.post('/leaves', verifyToken, validate(schemas.izinEkleSchema), async (req, res) => {
     const aktifKullanici = req.user?.kullanici_adi || req.user?.username || 'Sistem Yetkilisi';
     const { user_id, izin_turu, baslangic, bitis, aciklama, durum } = req.body;
 
@@ -48,7 +50,7 @@ router.post('/leaves', verifyToken, async (req, res) => {
         await addSystemLog(aktifKullanici, 'İZİN GİRİŞİ', personelAd, '', `${baslangic} - ${bitis} tarihleri arası ${izin_turu} girildi.`);
         res.json({ success: true, message: 'İzin başarıyla sisteme eklendi.' });
     } catch (err) {
-        console.error("İzin ekleme hatası:", err);
+        logger.error('İzin ekleme hatası: ' + err.message);
         res.status(500).json({ success: false, message: 'İzin eklenemedi.' });
     }
 });
@@ -77,7 +79,7 @@ router.delete('/leaves/:id', verifyToken, verifyAdmin, async (req, res) => {
 
         res.json({ success: true, message: 'İzin kaydı başarıyla silindi.' });
     } catch (err) {
-        console.error("İzin silme hatası:", err);
+        logger.error('İzin silme hatası: ' + err.message);
         res.status(500).json({ success: false, message: 'İzin silinemedi.' });
     }
 });

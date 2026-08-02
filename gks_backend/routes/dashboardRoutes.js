@@ -130,61 +130,145 @@ router.get('/dashboard/summary', verifyToken, async (req, res, next) => {
     }
 });
 
-// 2. TÜM GEÇİŞ LOGLARI (Global Hata Yönetimi Güncellendi)
+/**
+ * @swagger
+ * /logs:
+ *   get:
+ *     tags: [Dashboard]
+ *     summary: Geçiş logları (sayfalama destekli)
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 100, maximum: 500 }
+ *       - in: query
+ *         name: baslangic
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: bitis
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: arama
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Sayfalanmış log listesi
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:       { type: array, items: { type: object } }
+ *                 pagination: { $ref: '#/components/schemas/Pagination' }
+ */
+// 2. TÜM GEÇİŞ LOGLARI (Sayfalama destekli)
 router.get('/logs', verifyToken, async (req, res, next) => {
     try {
         const { baslangic, bitis, arama } = req.query;
-        let query = `
-            SELECT TOP 5000 L.ID, U.Ad_Soyad, L.RFID_Kart_No, D.Kapi_Adi, L.Basarili_Mi, L.Zaman 
-            FROM Logs L
-            LEFT JOIN Users U ON L.RFID_Kart_No = U.RFID_Kart_No
-            LEFT JOIN Doors D ON L.Door_ID = D.ID
-            WHERE 1=1
-        `;
+        const page  = Math.max(1, parseInt(req.query.page)  || 1);
+        const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 100));
+        const offset = (page - 1) * limit;
+
         const request = new sql.Request();
-        if (baslangic) { query += ` AND L.Zaman >= @baslangic`; request.input('baslangic', sql.DateTime, baslangic); }
-        if (bitis) { query += ` AND L.Zaman <= @bitis`; request.input('bitis', sql.DateTime, bitis + ' 23:59:59'); }
-        if (arama) { query += ` AND (U.Ad_Soyad LIKE @arama OR L.RFID_Kart_No LIKE @arama)`; request.input('arama', sql.NVarChar, `%${arama}%`); }
-        query += ` ORDER BY L.Zaman DESC`;
-        
-        const result = await request.query(query);
-        res.json(result.recordset);
+        let where = `WHERE 1=1`;
+        if (baslangic) { where += ` AND L.Zaman >= @baslangic`; request.input('baslangic', sql.DateTime, baslangic); }
+        if (bitis)     { where += ` AND L.Zaman <= @bitis`;     request.input('bitis', sql.DateTime, bitis + ' 23:59:59'); }
+        if (arama)     { where += ` AND (U.Ad_Soyad LIKE @arama OR L.RFID_Kart_No LIKE @arama)`; request.input('arama', sql.NVarChar, `%${arama}%`); }
+
+        request.input('offset', sql.Int, offset);
+        request.input('limit',  sql.Int, limit);
+
+        const countReq = new sql.Request();
+        if (baslangic) countReq.input('baslangic', sql.DateTime, baslangic);
+        if (bitis)     countReq.input('bitis', sql.DateTime, bitis + ' 23:59:59');
+        if (arama)     countReq.input('arama', sql.NVarChar, `%${arama}%`);
+
+        const [dataResult, countResult] = await Promise.all([
+            request.query(`
+                SELECT L.ID, U.Ad_Soyad, L.RFID_Kart_No, D.Kapi_Adi, L.Basarili_Mi, L.Zaman
+                FROM Logs L
+                LEFT JOIN Users U ON L.RFID_Kart_No = U.RFID_Kart_No
+                LEFT JOIN Doors D ON L.Door_ID = D.ID
+                ${where}
+                ORDER BY L.Zaman DESC
+                OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
+            `),
+            countReq.query(`
+                SELECT COUNT(*) AS toplam
+                FROM Logs L
+                LEFT JOIN Users U ON L.RFID_Kart_No = U.RFID_Kart_No
+                ${where}
+            `)
+        ]);
+
+        res.json({
+            data: dataResult.recordset,
+            pagination: { page, limit, total: countResult.recordset[0].toplam, totalPages: Math.ceil(countResult.recordset[0].toplam / limit) }
+        });
     } catch (err) {
         next(err);
     }
 });
 
-// 3. SİSTEM VE İK LOGLARI (Global Hata Yönetimi Güncellendi)
+// 3. SİSTEM VE İK LOGLARI (Sayfalama destekli)
 router.get('/system-logs', verifyToken, async (req, res, next) => {
     try {
         const { baslangic, bitis, arama } = req.query;
-        let query = `SELECT TOP 5000 * FROM SystemLogs WHERE 1=1`;
-        const request = new sql.Request();
-        if (baslangic) { query += ` AND Tarih >= @baslangic`; request.input('baslangic', sql.DateTime, baslangic); }
-        if (bitis) { query += ` AND Tarih <= @bitis`; request.input('bitis', sql.DateTime, bitis + ' 23:59:59'); }
-        if (arama) { query += ` AND (Personel_Ad LIKE @arama OR Sicil_No LIKE @arama OR Islem_Tipi LIKE @arama)`; request.input('arama', sql.NVarChar, `%${arama}%`); }
-        query += ` ORDER BY Tarih DESC`;
-        
-        const result = await request.query(query);
-        res.json(result.recordset);
+        const page  = Math.max(1, parseInt(req.query.page)  || 1);
+        const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 100));
+        const offset = (page - 1) * limit;
+
+        const request  = new sql.Request();
+        const countReq = new sql.Request();
+        let where = `WHERE 1=1`;
+        if (baslangic) { where += ` AND Tarih >= @baslangic`; request.input('baslangic', sql.DateTime, baslangic); countReq.input('baslangic', sql.DateTime, baslangic); }
+        if (bitis)     { where += ` AND Tarih <= @bitis`;     request.input('bitis', sql.DateTime, bitis + ' 23:59:59'); countReq.input('bitis', sql.DateTime, bitis + ' 23:59:59'); }
+        if (arama)     { where += ` AND (Personel_Ad LIKE @arama OR Sicil_No LIKE @arama OR Islem_Tipi LIKE @arama)`; request.input('arama', sql.NVarChar, `%${arama}%`); countReq.input('arama', sql.NVarChar, `%${arama}%`); }
+        request.input('offset', sql.Int, offset);
+        request.input('limit',  sql.Int, limit);
+
+        const [dataResult, countResult] = await Promise.all([
+            request.query(`SELECT * FROM SystemLogs ${where} ORDER BY Tarih DESC OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`),
+            countReq.query(`SELECT COUNT(*) AS toplam FROM SystemLogs ${where}`)
+        ]);
+
+        res.json({
+            data: dataResult.recordset,
+            pagination: { page, limit, total: countResult.recordset[0].toplam, totalPages: Math.ceil(countResult.recordset[0].toplam / limit) }
+        });
     } catch (err) {
         next(err);
     }
 });
 
-// 4. KAPI İŞLEM LOGLARI (Global Hata Yönetimi Güncellendi)
+// 4. KAPI İŞLEM LOGLARI (Sayfalama destekli)
 router.get('/door-logs', verifyToken, async (req, res, next) => {
     try {
         const { baslangic, bitis, arama } = req.query;
-        let query = `SELECT TOP 5000 * FROM DoorLogs WHERE 1=1`;
-        const request = new sql.Request();
-        if (baslangic) { query += ` AND Tarih >= @baslangic`; request.input('baslangic', sql.DateTime, baslangic); }
-        if (bitis) { query += ` AND Tarih <= @bitis`; request.input('bitis', sql.DateTime, bitis + ' 23:59:59'); }
-        if (arama) { query += ` AND (Kapi_Adi LIKE @arama OR Islem_Tipi LIKE @arama OR Detay LIKE @arama)`; request.input('arama', sql.NVarChar, `%${arama}%`); }
-        query += ` ORDER BY Tarih DESC`;
-        
-        const result = await request.query(query);
-        res.json(result.recordset);
+        const page  = Math.max(1, parseInt(req.query.page)  || 1);
+        const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 100));
+        const offset = (page - 1) * limit;
+
+        const request  = new sql.Request();
+        const countReq = new sql.Request();
+        let where = `WHERE 1=1`;
+        if (baslangic) { where += ` AND Tarih >= @baslangic`; request.input('baslangic', sql.DateTime, baslangic); countReq.input('baslangic', sql.DateTime, baslangic); }
+        if (bitis)     { where += ` AND Tarih <= @bitis`;     request.input('bitis', sql.DateTime, bitis + ' 23:59:59'); countReq.input('bitis', sql.DateTime, bitis + ' 23:59:59'); }
+        if (arama)     { where += ` AND (Kapi_Adi LIKE @arama OR Islem_Tipi LIKE @arama OR Detay LIKE @arama)`; request.input('arama', sql.NVarChar, `%${arama}%`); countReq.input('arama', sql.NVarChar, `%${arama}%`); }
+        request.input('offset', sql.Int, offset);
+        request.input('limit',  sql.Int, limit);
+
+        const [dataResult, countResult] = await Promise.all([
+            request.query(`SELECT * FROM DoorLogs ${where} ORDER BY Tarih DESC OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`),
+            countReq.query(`SELECT COUNT(*) AS toplam FROM DoorLogs ${where}`)
+        ]);
+
+        res.json({
+            data: dataResult.recordset,
+            pagination: { page, limit, total: countResult.recordset[0].toplam, totalPages: Math.ceil(countResult.recordset[0].toplam / limit) }
+        });
     } catch (err) {
         next(err);
     }

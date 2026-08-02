@@ -2,7 +2,9 @@ const express = require('express');
 const router = express.Router();
 const { sql } = require('../db');
 const { verifyToken } = require('../middlewares/auth');
+const { validate, schemas } = require('../middlewares/validate');
 const socket = require('../utils/socket');
+const logger = require('../utils/appLogger');
 
 // TÜM VARDİYALARI GETİR
 router.get('/shifts', verifyToken, async (req, res) => {
@@ -15,7 +17,7 @@ router.get('/shifts', verifyToken, async (req, res) => {
 });
 
 // YENİ VARDİYA EKLE
-router.post('/shifts', verifyToken, async (req, res) => {
+router.post('/shifts', verifyToken, validate(schemas.vardiyaSchema), async (req, res) => {
     const { vardiya_adi, mesai_baslangic, mesai_bitis, yemek_baslangic, yemek_bitis, tolerans_dk, mola_hakki_dk, calisma_gunleri } = req.body;
     try {
         const request = new sql.Request();
@@ -39,13 +41,13 @@ router.post('/shifts', verifyToken, async (req, res) => {
         socket.getIO().emit('shifts_updated');
         res.json({ success: true, message: 'Vardiya başarıyla eklendi.' });
     } catch (err) {
-        console.error("Vardiya ekleme hatası:", err);
+        logger.error('Vardiya ekleme hatası: ' + err.message);
         res.status(500).json({ success: false, message: 'Vardiya eklenemedi.' });
     }
 });
 
 // VARDİYA GÜNCELLE
-router.put('/shifts/:id', verifyToken, async (req, res) => {
+router.put('/shifts/:id', verifyToken, validate(schemas.vardiyaSchema), async (req, res) => {
     const { vardiya_adi, mesai_baslangic, mesai_bitis, yemek_baslangic, yemek_bitis, tolerans_dk, mola_hakki_dk, calisma_gunleri } = req.body;
     try {
         const request = new sql.Request();
@@ -71,13 +73,13 @@ router.put('/shifts/:id', verifyToken, async (req, res) => {
         socket.getIO().emit('shifts_updated');
         res.json({ success: true, message: 'Vardiya başarıyla güncellendi.' });
     } catch (err) {
-        console.error("Vardiya güncelleme hatası:", err);
+        logger.error('Vardiya güncelleme hatası: ' + err.message);
         res.status(500).json({ success: false, message: 'Vardiya güncellenemedi.' });
     }
 });
 
 // VARDİYA DURUM GÜNCELLE (AKTİF/PASİF)
-router.patch('/shifts/:id/status', verifyToken, async (req, res) => {
+router.patch('/shifts/:id/status', verifyToken, validate(schemas.vardiyaDurumSchema), async (req, res) => {
     const { durum } = req.body;
     try {
         const request = new sql.Request();

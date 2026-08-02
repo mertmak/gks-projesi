@@ -1,7 +1,11 @@
 const jwt = require('jsonwebtoken');
 
-// Gizli anahtarı .env dosyasından çekiyoruz, bulamazsa güvenli bir hata atması için fallback ekliyoruz
-const SECRET_KEY = process.env.JWT_SECRET || 'fallback_guvenlik_anahtari_degistirilmeli';
+if (!process.env.JWT_SECRET) {
+    console.error('HATA: JWT_SECRET ortam değişkeni tanımlı değil. Uygulama güvenli şekilde başlatılamaz.');
+    process.exit(1);
+}
+
+const SECRET_KEY = process.env.JWT_SECRET;
 
 const verifyToken = (req, res, next) => {
     const bearerHeader = req.headers['authorization'];

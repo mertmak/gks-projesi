@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { sql } = require('../db');
 const { verifyToken } = require('../middlewares/auth');
-const { parseTimeToMinutes } = require('../utils/dateHelper');
+const { validate, schemas } = require('../middlewares/validate');
+const { parseTimeToMinutes, diffMinutes } = require('../utils/dateHelper');
 
 // 1. TARİH ARALIĞINA GÖRE SADECE MESAİSİ OLANLARI GETİR
 router.get('/overtimes', verifyToken, async (req, res) => {
@@ -67,9 +68,7 @@ router.get('/overtimes', verifyToken, async (req, res) => {
             }
 
             if (isHaftaTatili && row.Ilk_Giris && row.Son_Cikis) {
-                const startMins = new Date(row.Ilk_Giris).getTime() / 60000;
-                const endMins = new Date(row.Son_Cikis).getTime() / 60000;
-                fazlaMesaiDk = Math.floor(endMins - startMins);
+                fazlaMesaiDk = diffMinutes(row.Ilk_Giris, row.Son_Cikis);
             } else if (!isHaftaTatili && row.Ilk_Giris && row.Son_Cikis) {
                 const expectedEndMins = parseTimeToMinutes(row.Mesai_Bitis);
                 const actualEndMins = new Date(row.Son_Cikis).getUTCHours() * 60 + new Date(row.Son_Cikis).getUTCMinutes();
@@ -83,9 +82,9 @@ router.get('/overtimes', verifyToken, async (req, res) => {
             userLogs.forEach(log => {
                 const kapi = log.Kapi_Turu; const zaman = new Date(log.Zaman);
                 if (kapi === 'Yemekhane Giriş') yBas = zaman;
-                else if (kapi === 'Yemekhane Çıkış' && yBas) { toplamYemekDk += Math.floor((zaman - yBas) / 60000); yBas = null; }
+                else if (kapi === 'Yemekhane Çıkış' && yBas) { toplamYemekDk += diffMinutes(yBas, zaman); yBas = null; }
                 if (kapi === 'Mola / Sigara Alanı') { if (!mBas) mBas = zaman; }
-                else if (mBas && kapi !== 'Mola / Sigara Alanı') { toplamMolaDk += Math.floor((zaman - mBas) / 60000); mBas = null; }
+                else if (mBas && kapi !== 'Mola / Sigara Alanı') { toplamMolaDk += diffMinutes(mBas, zaman); mBas = null; }
             });
 
             if (isHaftaTatili && fazlaMesaiDk > 0) fazlaMesaiDk = Math.max(0, fazlaMesaiDk - (toplamYemekDk + toplamMolaDk));
@@ -108,7 +107,7 @@ router.get('/overtimes', verifyToken, async (req, res) => {
 });
 
 // 2. BİREYSEL MESAİ ONAY / RED İŞLEMİ
-router.post('/overtimes/approve', verifyToken, async (req, res) => {
+router.post('/overtimes/approve', verifyToken, validate(schemas.mesaiOnaySchema), async (req, res) => {
     const aktifKullanici = req.user?.kullanici_adi || 'Sistem Yetkilisi';
     const { user_id, tarih, hesaplanan_dk, onaylanan_dk, durum, aciklama } = req.body;
     try {
@@ -125,7 +124,7 @@ router.post('/overtimes/approve', verifyToken, async (req, res) => {
 });
 
 // 3. TOPLU MESAİ ONAY / RED İŞLEMİ
-router.post('/overtimes/approve-bulk', verifyToken, async (req, res) => {
+router.post('/overtimes/approve-bulk', verifyToken, validate(schemas.mesaiBulkOnaySchema), async (req, res) => {
     const aktifKullanici = req.user?.kullanici_adi || 'Sistem Yetkilisi';
     const { mesailer, durum, aciklama } = req.body;
     try {

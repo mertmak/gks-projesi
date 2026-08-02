@@ -1,5 +1,6 @@
 const { sql } = require('../db');
 const socket = require('./socket');
+const appLogger = require('./appLogger');
 
 const addSystemLog = async (islemiYapan, islemTipi, personelAd, sicil, detay) => {
     try {
@@ -15,7 +16,7 @@ const addSystemLog = async (islemiYapan, islemTipi, personelAd, sicil, detay) =>
         `);
         socket.getIO().emit('new_system_log');
     } catch (err) {
-        console.error("Sistem logu yazılamadı:", err);
+        appLogger.error('Sistem logu yazılamadı: ' + err.message);
     }
 };
 
@@ -32,7 +33,7 @@ const addDoorLog = async (islemiYapan, islemTipi, kapiAdi, detay) => {
         `);
         socket.getIO().emit('new_door_log');
     } catch (err) {
-        console.error("Kapı logu yazılamadı:", err);
+        appLogger.error('Kapı logu yazılamadı: ' + err.message);
     }
 };
 

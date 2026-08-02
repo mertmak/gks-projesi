@@ -2,8 +2,10 @@ const express = require('express');
 const router = express.Router();
 const { sql } = require('../db');
 const { verifyToken } = require('../middlewares/auth');
+const { validate, schemas } = require('../middlewares/validate');
 const { addDoorLog } = require('../utils/logger');
 const socket = require('../utils/socket');
+const logger = require('../utils/appLogger');
 
 router.get('/doors', verifyToken, async (req, res) => {
     // Get doors kodlarınız...
@@ -15,7 +17,7 @@ router.get('/doors', verifyToken, async (req, res) => {
     }
 });
 
-router.post('/doors', verifyToken, async (req, res) => {
+router.post('/doors', verifyToken, validate(schemas.kapiEkleSchema), async (req, res) => {
     const aktifKullanici = req.user?.kullanici_adi || req.user?.Kullanici_Adi || req.user?.username || 'Sistem Yetkilisi';
     // YENİ: kapi_turu eklendi
     const { kapi_adi, departman, konum, kapi_turu } = req.body; 
@@ -38,12 +40,12 @@ router.post('/doors', verifyToken, async (req, res) => {
         socket.getIO().emit('system_updated');
         res.json({ success: true, message: 'Kapı başarıyla eklendi.' });
     } catch (err) {
-        console.error("Kapı ekleme hatası:", err);
+        logger.error('Kapı ekleme hatası: ' + err.message);
         res.status(500).json({ success: false, message: 'Kapı eklenemedi.' });
     }
 });
 
-router.put('/doors/:id', verifyToken, async (req, res) => {
+router.put('/doors/:id', verifyToken, validate(schemas.kapiEkleSchema), async (req, res) => {
     const aktifKullanici = req.user?.kullanici_adi || req.user?.Kullanici_Adi || req.user?.username || 'Sistem Yetkilisi';
     const doorId = req.params.id;
     // YENİ: kapi_turu eklendi
@@ -68,12 +70,12 @@ router.put('/doors/:id', verifyToken, async (req, res) => {
         socket.getIO().emit('system_updated');
         res.json({ success: true, message: 'Kapı başarıyla güncellendi.' });
     } catch (err) {
-        console.error("Kapı güncelleme hatası:", err);
+        logger.error('Kapı güncelleme hatası: ' + err.message);
         res.status(500).json({ success: false, message: 'Kapı güncellenemedi.' });
     }
 });
 
-router.patch('/doors/:id/status', verifyToken, async (req, res) => {
+router.patch('/doors/:id/status', verifyToken, validate(schemas.kapiDurumSchema), async (req, res) => {
     // Patch doors status kodlarınız...
         const aktifKullanici = req.user?.kullanici_adi || req.user?.Kullanici_Adi || req.user?.username || 'Sistem Yetkilisi';
         const doorId = req.params.id;
@@ -102,7 +104,7 @@ router.patch('/doors/:id/status', verifyToken, async (req, res) => {
             socket.getIO().emit('system_updated');
             res.json({ success: true, message: `Kapı başarıyla ${durum === 1 ? 'aktifleştirildi' : 'pasife alındı'}.` });
         } catch (err) {
-            console.error("Kapı durum güncelleme hatası:", err);
+            logger.error('Kapı durum güncelleme hatası: ' + err.message);
             res.status(500).json({ success: false, message: 'İşlem başarısız oldu.' });
         }
 });

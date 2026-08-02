@@ -33,9 +33,10 @@ function BulkOperations() {
           api.get('/doors'),
           api.get('/users') 
         ]);
+        const usersArr = usersRes.data?.data ?? usersRes.data;
         setAllShifts(shiftsRes.data.filter(s => s.Durum === 1 || s.Durum === true));
         setAllDoors(doorsRes.data.filter(d => d.Durum === 1 || d.Durum === true || d.Durum === null));
-        setAllUsers(usersRes.data.filter(u => u.Durum === 1 || u.Durum === true)); 
+        setAllUsers(usersArr.filter(u => u.Durum === 1 || u.Durum === true));
       } catch (err) {
         console.error("Sistem verileri çekilemedi", err);
       }

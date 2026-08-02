@@ -2,10 +2,56 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
+const rateLimit = require('express-rate-limit');
 const { sql } = require('../db');
 const { verifyToken, verifyAdmin, SECRET_KEY } = require('../middlewares/auth');
+const { validate, schemas } = require('../middlewares/validate');
+const logger = require('../utils/appLogger');
 
-router.post('/login', async (req, res) => {
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 dakika
+    max: 10,                   // Aynı IP'den en fazla 10 deneme
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: 'Çok fazla başarısız giriş denemesi. 15 dakika sonra tekrar deneyin.' }
+});
+
+/**
+ * @swagger
+ * /login:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Sisteme giriş yap
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [username, password]
+ *             properties:
+ *               username: { type: string, example: admin }
+ *               password: { type: string, example: Gizli123! }
+ *     responses:
+ *       200:
+ *         description: Giriş başarılı — JWT token döner
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 token:   { type: string }
+ *       401:
+ *         description: Hatalı kullanıcı adı veya şifre
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *       429:
+ *         description: Çok fazla başarısız deneme (rate limit)
+ */
+router.post('/login', loginLimiter, validate(schemas.loginSchema), async (req, res) => {
     const { username, password } = req.body;
     try {
         const request = new sql.Request();
@@ -30,12 +76,12 @@ router.post('/login', async (req, res) => {
             res.status(401).json({ success: false, message: 'Kullanıcı bulunamadı!' });
         }
     } catch (err) {
-        console.error("Login hatası:", err);
+        logger.error('Login hatası: ' + err.message);
         res.status(500).json({ success: false, message: 'Sunucu hatası!' });
     }
 });
 
-router.post('/ilk-kurulum', async (req, res) => {
+router.post('/ilk-kurulum', loginLimiter, validate(schemas.ilkKurulumSchema), async (req, res) => {
     // Kurulum kodlarınız...
     try {
             const checkReq = new sql.Request();
@@ -57,7 +103,7 @@ router.post('/ilk-kurulum', async (req, res) => {
         }
 });
 
-router.post('/hesap-ekle', verifyToken, verifyAdmin, async (req, res) => {
+router.post('/hesap-ekle', verifyToken, verifyAdmin, validate(schemas.hesapEkleSchema), async (req, res) => {
     // Hesap ekleme kodlarınız...
         const { username, password, rol } = req.body;
         try {
@@ -74,7 +120,28 @@ router.post('/hesap-ekle', verifyToken, verifyAdmin, async (req, res) => {
         }
 });
 
-router.post('/sifre-degistir', verifyToken, async (req, res) => {
+/**
+ * @swagger
+ * /sifre-degistir:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Şifre değiştir
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [username, eskiSifre, yeniSifre]
+ *             properties:
+ *               username:  { type: string }
+ *               eskiSifre: { type: string }
+ *               yeniSifre: { type: string, minLength: 6 }
+ *     responses:
+ *       200: { description: Şifre değiştirildi }
+ *       401: { description: Mevcut şifre yanlış }
+ */
+router.post('/sifre-degistir', verifyToken, validate(schemas.sifreDegistirSchema), async (req, res) => {
     // Şifre değiştirme kodlarınız...
     const { username, eskiSifre, yeniSifre } = req.body;
         try {
