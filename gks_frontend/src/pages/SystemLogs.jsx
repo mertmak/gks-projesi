@@ -1,16 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
-import { customIcons, AG_GRID_LOCALE_TR } from '../utils/constants';
 import { socket } from '../api/socket';
-import AutocompleteSearch from '../components/AutoCompleteSearch';
 
-
-// AG Grid importları ve Yeni Tema Motoru
-import { AgGridReact } from 'ag-grid-react';
-import { ModuleRegistry, AllCommunityModule, ValidationModule, themeQuartz } from 'ag-grid-community';
-import 'ag-grid-community/styles/ag-grid.css';
-
-ModuleRegistry.registerModules([AllCommunityModule, ValidationModule]);
+// YENİ ORTAK BİLEŞENLER
+import CustomDataGrid from '../components/CustomDataGrid';
+import AutocompleteSearch from '../components/AutocompleteSearch';
 
 function SystemLogs() {
   const bugunTarihi = new Date();
@@ -25,7 +19,7 @@ function SystemLogs() {
   // ARAMA ÖNERİLERİ İÇİN STATE
   const [suggestions, setSuggestions] = useState([]);
 
-  // --- AG GRID SÜTUN AYARLARI (useMemo İle Sabitlendi) ---
+  // --- AG GRID SÜTUN AYARLARI ---
   const colDefs = useMemo(() => [
     { 
       field: 'Tarih', 
@@ -54,39 +48,24 @@ function SystemLogs() {
     { field: 'Detay', headerName: 'Detay', flex: 1, minWidth: 200 }
   ], []);
 
-  const defaultColDef = useMemo(() => ({
-    filter: true,
-    sortable: true, // SIRALAMA AKTİF
-    resizable: true,
-    cellStyle: { borderRight: '1px solid #cbd5e1' },
-    headerClass: 'border-r border-slate-300'
-  }), []);
-
-  // --- OTOMATİK TAMAMLAMA VE TEKRARLARI GİZLEME ---
-const handleSearchInputChange = async (e) => {
+  // --- YENİ BİLEŞENE UYGUN ARAMA FONKSİYONU ---
+  const handleSearchInputChange = async (e) => {
     const value = e.target.value;
     setFilters({ ...filters, arama: value }); 
     if (value.length >= 2) {
       try {
         const response = await api.get('/users', { params: { arama: value } });
-        // YENİ: Veriyi AutocompleteSearch bileşeninin okuyacağı formata haritalıyoruz
         const formattedSuggestions = response.data.map(user => ({
            label: user.Ad_Soyad,
            subLabel: `Sicil: ${user.Sicil_No} | ${user.Departman || 'Departman Yok'}`,
            value: user.Ad_Soyad,
-           originalData: user // İleride objenin tamamı gerekirse diye tutuyoruz
+           originalData: user 
         }));
         setSuggestions(formattedSuggestions.slice(0, 5)); 
       } catch (err) {}
     } else {
       setSuggestions([]); 
     }
-  };
-
-  const handleSuggestionClick = (log) => {
-    // Listeden tıklanan personelin adını veya sicilini arama kutusuna yazdır
-    setFilters({ ...filters, arama: log.Personel_Ad || log.Sicil_No });
-    setSuggestions([]);
   };
 
   const handleFetchData = async (e) => {
@@ -103,8 +82,8 @@ const handleSearchInputChange = async (e) => {
     }
   };
 
-useEffect(() => {
-    // 1. Eğer bir arama/filtre yapıldıysa verileri tazeleyecek fonksiyon
+  // --- SOCKET.IO İLE ANLIK GÜNCELLEME ---
+  useEffect(() => {
     const refreshLogs = async () => {
       if (!hasSearched) return;
       try {
@@ -115,10 +94,8 @@ useEffect(() => {
       }
     };
 
-    // 2. Backend'den 'new_system_log' sinyali geldiğinde refreshLogs'u çalıştır
     socket.on('new_system_log', refreshLogs);
 
-    // 3. Component ekrandan gidince dinlemeyi bırak (Memory leak önleme)
     return () => {
       socket.off('new_system_log', refreshLogs);
     };
@@ -137,32 +114,19 @@ useEffect(() => {
           <input type="date" value={filters.bitis} onChange={(e) => setFilters({...filters, bitis: e.target.value})} className="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         
-        {/* YENİ EKLENEN AÇILIR MENÜLÜ ARAMA KUTUSU */}
-        <div className="relative">
-          <label className="block text-xs font-bold text-slate-600 mb-1">Ad Soyad / Sicil No</label>
-          <input 
-            type="text" 
-            placeholder="Sicil veya isim ara..." 
-            value={filters.arama} 
-            onChange={handleSearchInputChange} 
-            onBlur={() => setTimeout(() => setSuggestions([]), 200)} 
-            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all" 
-          />
-          
-          {suggestions.length > 0 && (
-            <ul className="absolute z-50 w-full bg-white border border-slate-200 shadow-2xl max-h-56 overflow-y-auto rounded-lg mt-1 left-0 divide-y divide-slate-100">
-              {suggestions.map((log) => (
-                <li 
-                  key={log.ID || Math.random()} 
-                  onClick={() => handleSuggestionClick(log)}
-                  className="px-4 py-2 hover:bg-blue-50 cursor-pointer transition-colors flex flex-col"
-                >
-                  <span className="font-bold text-slate-800 text-sm">{log.Personel_Ad || 'Bilinmeyen Personel'}</span>
-                  <span className="text-slate-500 text-xs">Sicil: {log.Sicil_No || 'Belirtilmemiş'}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+        {/* YENİ ORTAK ARAMA BİLEŞENİ */}
+        <div className="relative z-50">
+           <AutocompleteSearch 
+             label="Ad Soyad / Sicil No"
+             placeholder="Sicil veya isim ara..."
+             value={filters.arama}
+             onChange={handleSearchInputChange}
+             suggestions={suggestions}
+             onSelect={(item) => {
+               setFilters({...filters, arama: item.value});
+               setSuggestions([]);
+             }}
+           />
         </div>
 
         <div className="flex items-end">
@@ -172,28 +136,18 @@ useEffect(() => {
         </div>
       </form>
 
-      {/* AG GRID TABLOSU */}
+      {/* YENİ ORTAK TABLO BİLEŞENİ */}
       {hasSearched && (
         <div className="flex-1 overflow-hidden border border-slate-300 rounded-2xl bg-white shadow-sm flex flex-col p-2 h-[60vh]">
           <div className="p-2 text-sm font-bold text-slate-700">
             Arama Sonuçları ({logs.length} Kayıt)
           </div>
           
-          <div className="flex-1 w-full h-full">
-            <AgGridReact
-              theme={themeQuartz} 
-              icons={customIcons} 
-              alwaysMultiSort={true} 
-              getRowId={(params) => params.data.ID} // SATIR KİMLİK BELİRLEYİCİ
-              rowData={logs}
-              columnDefs={colDefs}
-              defaultColDef={defaultColDef}
-              pagination={true}
-              localeText={AG_GRID_LOCALE_TR}
-              paginationPageSize={50}
-              domLayout="normal"
-            />
-          </div>
+          <CustomDataGrid 
+            rowData={logs}
+            columnDefs={colDefs}
+            getRowId={(params) => params.data.ID}
+          />
         </div>
       )}
     </div>

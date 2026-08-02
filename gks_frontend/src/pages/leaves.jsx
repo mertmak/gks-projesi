@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
 import AutocompleteSearch from '../components/AutocompleteSearch';
 import CustomDataGrid from '../components/CustomDataGrid';
+import AlertMessage from '../components/AlertMessage';
 
 function Leaves() {
   const [leaves, setLeaves] = useState([]);
@@ -141,11 +142,7 @@ function Leaves() {
         <p className="text-slate-500 text-sm mt-1">Personellerin yıllık izin, sağlık raporu veya mazeret izinlerini buradan yönetebilirsiniz.</p>
       </div>
 
-      {message.text && (
-        <div className={`p-4 rounded-lg text-sm font-bold border ${message.type === 'success' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-          {message.text}
-        </div>
-      )}
+      <AlertMessage message={message.text} type={message.type} />
 
       {/* İZİN EKLEME FORMU */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">

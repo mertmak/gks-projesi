@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import api from '../api/axios';
 
-// YENİ ORTAK BİLEŞENLER (Temizlendi)
+// ORTAK BİLEŞENLER
 import CustomDataGrid from '../components/CustomDataGrid';
 import AutocompleteSearch from '../components/AutocompleteSearch';
+import Modal from '../components/Modal'; // YENİ: Modal bileşeni
+import AlertMessage from '../components/AlertMessage';
 
 function Overtimes() {
   const gridRef = useRef();
@@ -209,8 +211,7 @@ function Overtimes() {
         </div>
       </div>
 
-      {message.text && <div className={`p-4 rounded-lg text-sm font-bold border ${message.type === 'success' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>{message.text}</div>}
-
+      <AlertMessage message={message.text} type={message.type} />
       <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 shadow-inner">
         <h3 className="text-sm font-black text-slate-700 mb-3 uppercase tracking-wider">Hedefe Yönelik Toplu İşlem</h3>
         <form onSubmit={handleAdvancedBulkSubmit} className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
@@ -298,10 +299,10 @@ function Overtimes() {
         />
       </div>
 
-      {showApprovalModal && selectedRow && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm border border-slate-200">
-            <h3 className="text-xl font-black text-slate-800 mb-1">Mesai İnceleme</h3>
+      {/* --- MESAİ ONAY MODALI (YENİ YAPI) --- */}
+      <Modal isOpen={showApprovalModal} onClose={() => setShowApprovalModal(false)} title="Mesai İnceleme" maxWidth="max-w-sm">
+        {selectedRow && (
+          <>
             <p className="text-sm text-slate-500 mb-4 font-bold">{selectedRow.Ad_Soyad} - {selectedRow.TarihStr.split('-').reverse().join('.')}</p>
             
             <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 mb-4 flex justify-between items-center">
@@ -332,9 +333,9 @@ function Overtimes() {
                 <button type="submit" className={`px-4 py-2 text-white font-bold rounded-lg text-sm ${approvalData.durum === 'Onaylandı' ? 'bg-green-600' : 'bg-red-600'}`}>Kaydet</button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Modal>
 
     </div>
   );

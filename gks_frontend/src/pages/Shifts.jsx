@@ -1,17 +1,20 @@
 import { useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
 import { socket } from '../api/socket';
-import CustomDataGrid from '../components/CustomDataGrid';
-import AutocompleteSearch from '../components/AutoCompleteSearch';
 
-// MSSQL'den gelen saat verisini (Örn: 1970-01-01T09:00:00.000Z veya 09:00:00) HH:mm formatına çeviren yardımcı fonksiyon
+// YENİ ORTAK BİLEŞENLER
+import CustomDataGrid from '../components/CustomDataGrid';
+import AutocompleteSearch from '../components/AutocompleteSearch';
+import AlertMessage from '../components/AlertMessage';
+
+// MSSQL'den gelen saat verisini HH:mm formatına çeviren yardımcı fonksiyon
 const formatTimeForInput = (val) => {
   if (!val) return '';
   if (val.includes('T')) return val.split('T')[1].substring(0, 5);
   return val.substring(0, 5);
 };
 
-// GÜN TANIMLARI (JavaScript Date objesiyle eşleşecek şekilde)
+// GÜN TANIMLARI
 const GUNLER = [
   { id: 1, ad: 'Pzt' }, { id: 2, ad: 'Sal' }, { id: 3, ad: 'Çar' }, 
   { id: 4, ad: 'Per' }, { id: 5, ad: 'Cum' }, { id: 6, ad: 'Cmt' }, { id: 0, ad: 'Paz' }
@@ -26,11 +29,10 @@ function Shifts() {
   const [arama, setArama] = useState('');
   const [suggestions, setSuggestions] = useState([]);
 
-  // DÜZENLEME (EDIT) VE EKLEME STATE'LERİ
+  // DÜZENLEME VE EKLEME STATE'LERİ
   const [isEditing, setIsEditing] = useState(false);
   const [editId, setEditId] = useState(null);
   
-  // FORM STATE (calisma_gunleri eklendi)
   const [formData, setFormData] = useState({ 
     vardiya_adi: '', 
     mesai_baslangic: '', 
@@ -39,7 +41,7 @@ function Shifts() {
     yemek_bitis: '', 
     tolerans_dk: 0, 
     mola_hakki_dk: 0,
-    calisma_gunleri: [1, 2, 3, 4, 5] // Varsayılan Hafta İçi
+    calisma_gunleri: [1, 2, 3, 4, 5] 
   });
 
   const fetchShifts = async () => {
@@ -58,7 +60,6 @@ function Shifts() {
     fetchShifts();
   }, []);
 
-  // --- YENİ YAPI: SOCKET.IO İLE ANLIK GÜNCELLEME ---
   useEffect(() => {
     const refreshShifts = async () => {
       try {
@@ -68,38 +69,32 @@ function Shifts() {
     };
 
     socket.on('shifts_updated', refreshShifts);
-
-    return () => {
-      socket.off('shifts_updated', refreshShifts);
-    };
+    return () => { socket.off('shifts_updated', refreshShifts); };
   }, []);
 
-  // --- OTOMATİK TAMAMLAMA ---
-const handleSearchInputChange = async (e) => {
+  // --- BİLEŞENE UYGUN LOKAL HIZLI ARAMA ---
+  const handleSearchInputChange = (e) => {
     const value = e.target.value;
-    setFilters({ ...filters, arama: value }); 
+    setArama(value); 
+    
     if (value.length >= 2) {
-      try {
-        const response = await api.get('/users', { params: { arama: value } });
-        // YENİ: Veriyi AutocompleteSearch bileşeninin okuyacağı formata haritalıyoruz
-        const formattedSuggestions = response.data.map(user => ({
-           label: user.Ad_Soyad,
-           subLabel: `Sicil: ${user.Sicil_No} | ${user.Departman || 'Departman Yok'}`,
-           value: user.Ad_Soyad,
-           originalData: user // İleride objenin tamamı gerekirse diye tutuyoruz
-        }));
-        setSuggestions(formattedSuggestions.slice(0, 5)); 
-      } catch (err) {}
+      const lowerVal = value.toLowerCase();
+      // Halihazırda çekilmiş olan vardiyalar içinde (frontend'de) filtreleme yapıyoruz
+      const matchedShifts = shifts.filter(shift => shift.Vardiya_Adi.toLowerCase().includes(lowerVal));
+      
+      const formattedSuggestions = matchedShifts.map(shift => ({
+         label: shift.Vardiya_Adi,
+         subLabel: `Çalışma Günleri: ${shift.Calisma_Gunleri || 'Hafta İçi'}`,
+         value: shift.Vardiya_Adi,
+         originalData: shift
+      }));
+      setSuggestions(formattedSuggestions.slice(0, 5)); 
     } else {
       setSuggestions([]); 
     }
   };
 
-  const handleSuggestionClick = (shift) => {
-    setArama(shift.Vardiya_Adi);
-    setSuggestions([]);
-  };
-
+  // Tabloda sadece aranan vardiyaları göstermek için
   const filteredShifts = useMemo(() => {
     if (!arama) return shifts;
     return shifts.filter(shift => shift.Vardiya_Adi.toLowerCase().includes(arama.toLowerCase()));
@@ -112,11 +107,7 @@ const handleSearchInputChange = async (e) => {
     e.preventDefault();
     setMessage({ text: '', type: '' });
     
-    // Gönderilecek veriyi hazırla (Diziyi virgüllü stringe çevir)
-    const payload = { 
-      ...formData, 
-      calisma_gunleri: formData.calisma_gunleri.join(',') 
-    };
+    const payload = { ...formData, calisma_gunleri: formData.calisma_gunleri.join(',') };
 
     try {
       if (isEditing) {
@@ -140,7 +131,6 @@ const handleSearchInputChange = async (e) => {
     setIsEditing(true);
     setEditId(shift.ID);
     
-    // Veritabanından gelen virgüllü metni diziye çevir (Boşsa varsayılanı kullan)
     const parsedGunler = shift.Calisma_Gunleri ? shift.Calisma_Gunleri.split(',').map(Number) : [1, 2, 3, 4, 5];
 
     setFormData({ 
@@ -194,7 +184,6 @@ const handleSearchInputChange = async (e) => {
         if (gunlerArr.length === 7) return 'Her Gün';
         if (gunlerArr.join(',') === '1,2,3,4,5') return 'Hafta İçi';
         if (gunlerArr.join(',') === '0,6' || gunlerArr.join(',') === '6,0') return 'Hafta Sonu';
-        // Özel bir seçimse gün isimlerini yan yana yazdır
         return gunlerArr.map(g => GUNLER.find(x => x.id === g)?.ad).join(', ');
       },
       width: 160 
@@ -242,16 +231,8 @@ const handleSearchInputChange = async (e) => {
         const isActive = params.data.Durum === undefined || params.data.Durum === null ? true : params.data.Durum;
         return (
           <div className="space-x-2 mt-1">
-            <button 
-              onClick={() => handleEditClick(params.data)} 
-              className="px-3 py-1 bg-blue-50 text-blue-600 font-bold rounded text-xs hover:bg-blue-100 transition-colors"
-            >
-              Düzenle
-            </button>
-            <button 
-              onClick={() => handleToggleStatus(params.data)} 
-              className={`px-3 py-1 font-bold rounded text-xs transition-colors ${isActive ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-green-50 text-green-600 hover:bg-green-100'}`}
-            >
+            <button onClick={() => handleEditClick(params.data)} className="px-3 py-1 bg-blue-50 text-blue-600 font-bold rounded text-xs hover:bg-blue-100 transition-colors">Düzenle</button>
+            <button onClick={() => handleToggleStatus(params.data)} className={`px-3 py-1 font-bold rounded text-xs transition-colors ${isActive ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-green-50 text-green-600 hover:bg-green-100'}`}>
               {isActive ? 'Pasife Al' : 'Aktifleştir'}
             </button>
           </div>
@@ -259,7 +240,6 @@ const handleSearchInputChange = async (e) => {
       }
     }
   ], []);
-
 
   return (
     <div className="space-y-8 relative mt-8">
@@ -275,11 +255,7 @@ const handleSearchInputChange = async (e) => {
           {isEditing ? 'Vardiyayı Düzenle' : 'Yeni Vardiya Ekle'}
         </h2>
         
-        {message.text && (
-          <div className={`mb-4 p-3 rounded-lg text-sm font-bold border ${message.type === 'success' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-            {message.text}
-          </div>
-        )}
+        <AlertMessage message={message.text} type={message.type} />
         
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
           
@@ -288,35 +264,15 @@ const handleSearchInputChange = async (e) => {
             <input type="text" name="vardiya_adi" value={formData.vardiya_adi} onChange={handleChange} placeholder="Örn: Hafta İçi Gündüz Vardiyası" required className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-500 mb-1">Mesai Başlangıç *</label>
-            <input type="time" name="mesai_baslangic" value={formData.mesai_baslangic} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-500 mb-1">Mesai Bitiş *</label>
-            <input type="time" name="mesai_bitis" value={formData.mesai_bitis} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
-          </div>
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">Mesai Başlangıç *</label><input type="time" name="mesai_baslangic" value={formData.mesai_baslangic} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" /></div>
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">Mesai Bitiş *</label><input type="time" name="mesai_bitis" value={formData.mesai_bitis} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" /></div>
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">Yemek Başlangıç</label><input type="time" name="yemek_baslangic" value={formData.yemek_baslangic} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" /></div>
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">Yemek Bitiş</label><input type="time" name="yemek_bitis" value={formData.yemek_bitis} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" /></div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-500 mb-1">Yemek Başlangıç</label>
-            <input type="time" name="yemek_baslangic" value={formData.yemek_baslangic} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-500 mb-1">Yemek Bitiş</label>
-            <input type="time" name="yemek_bitis" value={formData.yemek_bitis} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
-          </div>
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">Tolerans (Dakika)</label><input type="number" name="tolerans_dk" value={formData.tolerans_dk} onChange={handleChange} min="0" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" /></div>
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">Günlük Mola Hakkı (Dakika)</label><input type="number" name="mola_hakki_dk" value={formData.mola_hakki_dk} onChange={handleChange} min="0" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" /></div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-500 mb-1">Tolerans (Dakika)</label>
-            <input type="number" name="tolerans_dk" value={formData.tolerans_dk} onChange={handleChange} min="0" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
-          </div>
-          
-          <div>
-            <label className="block text-xs font-bold text-slate-500 mb-1">Günlük Mola Hakkı (Dakika)</label>
-            <input type="number" name="mola_hakki_dk" value={formData.mola_hakki_dk} onChange={handleChange} min="0" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
-          </div>
-
-          {/* YENİ: ÇALIŞMA GÜNLERİ SEÇİMİ */}
+          {/* ÇALIŞMA GÜNLERİ SEÇİMİ */}
           <div className="md:col-span-4 mt-2">
             <label className="block text-xs font-bold text-slate-500 mb-2">Çalışma Günleri Seçimi *</label>
             <div className="flex flex-wrap gap-2">
@@ -345,9 +301,7 @@ const handleSearchInputChange = async (e) => {
 
           <div className="md:col-span-4 flex justify-end space-x-3 mt-4">
             {isEditing && (
-              <button type="button" onClick={cancelEdit} className="px-6 py-2 bg-slate-200 font-bold text-slate-700 rounded-lg hover:bg-slate-300 transition-colors w-1/4">
-                İptal Et
-              </button>
+              <button type="button" onClick={cancelEdit} className="px-6 py-2 bg-slate-200 font-bold text-slate-700 rounded-lg hover:bg-slate-300 transition-colors w-1/4">İptal Et</button>
             )}
             <button type="submit" className={`px-6 py-2 font-bold rounded-lg text-white transition-colors w-1/4 ${isEditing ? 'bg-orange-500 hover:bg-orange-600' : 'bg-slate-900 hover:bg-slate-800'}`}>
               {isEditing ? 'Vardiyayı Güncelle' : 'Sisteme Kaydet'}
@@ -358,19 +312,18 @@ const handleSearchInputChange = async (e) => {
 
       {/* ARAMA VE TABLO BÖLÜMÜ */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col p-4 h-[55vh]">
-        <div className="mb-4 relative w-full md:w-1/3">
-          <label className="block text-xs font-bold text-slate-600 mb-1">Vardiya Ara</label>
-          <input type="text" placeholder="Vardiya adı yazın..." value={arama} onChange={handleSearchInputChange} onBlur={() => setTimeout(() => setSuggestions([]), 200)} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all" />
-          
-          {suggestions.length > 0 && (
-            <ul className="absolute z-50 w-full bg-white border border-slate-200 shadow-2xl max-h-56 overflow-y-auto rounded-lg mt-1 left-0 divide-y divide-slate-100">
-              {suggestions.map((shift) => (
-                <li key={shift.ID} onClick={() => handleSuggestionClick(shift)} className="px-4 py-2 hover:bg-blue-50 cursor-pointer transition-colors">
-                  <span className="font-bold text-slate-800 text-sm">{shift.Vardiya_Adi}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+        <div className="mb-4 relative w-full md:w-1/3 z-50">
+          <AutocompleteSearch 
+            label="Vardiya Ara"
+            placeholder="Vardiya adı yazın..."
+            value={arama}
+            onChange={handleSearchInputChange}
+            suggestions={suggestions}
+            onSelect={(item) => {
+              setArama(item.value);
+              setSuggestions([]);
+            }}
+          />
         </div>
 
         <div className="p-2 text-sm font-bold text-slate-700 bg-slate-50 border-t border-x border-slate-200 rounded-t-lg">
@@ -379,14 +332,9 @@ const handleSearchInputChange = async (e) => {
         
         <div className="flex-1 w-full h-full">
           <CustomDataGrid 
-            ref={gridRef}
-            rowData={overtimes}
+            rowData={filteredShifts}
             columnDefs={colDefs}
-            getRowId={(params) => `${params.data.User_ID}-${params.data.TarihStr}`}
-            rowSelection="multiple"
-            onSelectionChanged={onSelectionChanged}
-            quickFilterText={quickFilterText}
-            rowHeight={60}
+            getRowId={(params) => params.data.ID}
           />
         </div>
       </div>

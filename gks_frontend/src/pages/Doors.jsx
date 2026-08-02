@@ -3,6 +3,7 @@ import api from '../api/axios';
 import { socket } from '../api/socket';
 import CustomDataGrid from '../components/CustomDataGrid';
 import AutocompleteSearch from '../components/AutocompleteSearch';
+import AlertMessage from '../components/AlertMessage';
 
 function Doors() {
   const [doors, setDoors] = useState([]);
@@ -217,11 +218,7 @@ function Doors() {
           {isEditing ? 'Kapı Bilgilerini Düzenle' : 'Yeni Kapı Ekle'}
         </h2>
         
-        {message.text && (
-          <div className={`mb-4 p-3 rounded-lg text-sm font-bold border ${message.type === 'success' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-            {message.text}
-          </div>
-        )}
+      <AlertMessage message={message.text} type={message.type} />
         
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
           <div>

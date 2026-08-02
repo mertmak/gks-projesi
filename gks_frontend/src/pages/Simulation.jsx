@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../api/axios';
+import AlertMessage from '../components/AlertMessage';
 
 function Simulation() {
   const [shifts, setShifts] = useState([]);
@@ -20,8 +21,7 @@ function Simulation() {
     startDateStr: tenDaysAgo.toISOString().split('T')[0],
     endDateStr: today.toISOString().split('T')[0],
     
-    // YENİ: Özelleştirilebilir Veriler
-    veriKaynagi: 'otomatik', // otomatik | ozel
+    veriKaynagi: 'otomatik', 
     customIsimler: '',
     customSoyisimler: '',
     customDepartmanlar: '',
@@ -53,7 +53,6 @@ function Simulation() {
     if (window.confirm("Gelişmiş ayarlar ve rastgele dağılımlarla simülasyon başlatılacaktır. Onaylıyor musunuz?")) {
       setLoading(true); setMessage({ text: '', type: '' });
       
-      // Sadece 'ozel' seçiliyse textarealardaki verileri gönder
       const payload = { ...formData };
       if (payload.veriKaynagi === 'otomatik') {
         payload.customIsimler = ''; payload.customSoyisimler = ''; 
@@ -79,12 +78,7 @@ function Simulation() {
         <p className="text-slate-500 text-sm mt-1">Sisteme yeni veriler ilave edin, rastgele hatalı geçişler ve asimetrik yetkilerle gerçeğe en yakın test ortamını yaratın.</p>
       </div>
 
-      {message.text && (
-        <div className={`p-4 rounded-xl text-sm font-bold border ${message.type === 'success' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-          {message.text}
-        </div>
-      )}
-
+      <AlertMessage message={message.text} type={message.type} />
       <form onSubmit={handleSubmit} className="space-y-6">
         
         {/* ADIM 1: SIFIRLAMA VEYA İLAVE ETME */}
@@ -144,7 +138,7 @@ function Simulation() {
           </div>
         </div>
 
-        {/* YENİ ADIM: VERİ KAYNAĞI ÖZELLEŞTİRME */}
+        {/* ADIM 2: VERİ KAYNAĞI ÖZELLEŞTİRME */}
         {(formData.userAction !== 'keep' || formData.doorAction !== 'keep') && (
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 animate-fade-in-up">
             <h3 className="text-lg font-black text-slate-800 mb-4 flex items-center border-b border-slate-100 pb-4">

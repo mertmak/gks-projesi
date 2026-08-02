@@ -1,40 +1,33 @@
 import { useState, useEffect } from 'react';
 import api from '../api/axios';
 
-// YENİ ORTAK BİLEŞEN
+// ORTAK BİLEŞENLER
 import AutocompleteSearch from '../components/AutocompleteSearch';
+import Modal from '../components/Modal'; // YENİ: Modal bileşeni
+import AlertMessage from '../components/AlertMessage';
 
 function PersonnelOperations() {
-  // ARAMA STATE'LERİ
   const [arama, setArama] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
 
-  // SİSTEM VERİLERİ (Kapılar ve Vardiyalar)
   const [allDoors, setAllDoors] = useState([]);
   const [allShifts, setAllShifts] = useState([]);
 
   // AKTİF İŞLEM MODALI STATE'İ (add, edit, auth, shift, status)
   const [activeModal, setActiveModal] = useState(null);
 
-  // FORM STATE'LERİ
-  const [formData, setFormData] = useState({
-    ad_soyad: '', rfid: '', tc: '', sicil: '', sirket: '', departman: '', gorev: '', ise_giris: ''
-  });
+  const [formData, setFormData] = useState({ ad_soyad: '', rfid: '', tc: '', sicil: '', sirket: '', departman: '', gorev: '', ise_giris: '' });
   const [authData, setAuthData] = useState([]);
   const [shiftData, setShiftData] = useState('');
   const [exitData, setExitData] = useState({ cikis_tarihi: new Date().toISOString().split('T')[0], cikis_nedeni: '' });
 
-  // SİSTEM VERİLERİNİ ÇEK
   useEffect(() => {
     const fetchSystemData = async () => {
       try {
-        const [doorsRes, shiftsRes] = await Promise.all([
-          api.get('/doors'),
-          api.get('/shifts')
-        ]);
+        const [doorsRes, shiftsRes] = await Promise.all([ api.get('/doors'), api.get('/shifts') ]);
         setAllDoors(doorsRes.data.filter(d => d.Durum === 1 || d.Durum === true || d.Durum === null));
         setAllShifts(shiftsRes.data.filter(s => s.Durum === 1 || s.Durum === true));
       } catch (err) {
@@ -44,7 +37,6 @@ function PersonnelOperations() {
     fetchSystemData();
   }, []);
 
-  // YENİ BİLEŞENE UYGUN ARAMA FONKSİYONU
   const handleSearchChange = async (e) => {
     const value = e.target.value;
     setArama(value);
@@ -52,7 +44,6 @@ function PersonnelOperations() {
     if (value.length >= 2) {
       try {
         const res = await api.get('/users', { params: { arama: value } });
-        // Veriyi AutocompleteSearch bileşeninin okuyacağı formata haritalıyoruz
         const formattedSuggestions = res.data.map(user => ({
            label: user.Ad_Soyad,
            subLabel: `Sicil: ${user.Sicil_No} | ${user.Departman || 'Departman Yok'} - ${user.Durum ? 'Aktif' : 'Pasif'}`,
@@ -66,7 +57,6 @@ function PersonnelOperations() {
     }
   };
 
-  // PERSONEL SEÇİLDİĞİNDE VERİLERİNİ TOPLA
   const handleSelectUser = async (user) => {
     setLoading(true);
     setMessage({ text: '', type: '' });
@@ -81,14 +71,7 @@ function PersonnelOperations() {
       
       setSelectedUser(user);
       setFormData({
-        ad_soyad: user.Ad_Soyad || '', 
-        rfid: user.RFID_Kart_No?.includes('KART_YOK') ? '' : (user.RFID_Kart_No || ''), 
-        tc: user.TC_Kimlik || '', 
-        sicil: user.Sicil_No || '', 
-        sirket: user.Sirket || '', 
-        departman: user.Departman || '', 
-        gorev: user.Gorev || '', 
-        ise_giris: user.Ise_Giris_Tarihi ? user.Ise_Giris_Tarihi.split('T')[0] : ''
+        ad_soyad: user.Ad_Soyad || '', rfid: user.RFID_Kart_No?.includes('KART_YOK') ? '' : (user.RFID_Kart_No || ''), tc: user.TC_Kimlik || '', sicil: user.Sicil_No || '', sirket: user.Sirket || '', departman: user.Departman || '', gorev: user.Gorev || '', ise_giris: user.Ise_Giris_Tarihi ? user.Ise_Giris_Tarihi.split('T')[0] : ''
       });
       setAuthData(authRes.data);
       setShiftData(shiftRes.data.vardiya_id || '');
@@ -108,7 +91,6 @@ function PersonnelOperations() {
   const handleAddSubmit = async (e) => {
     e.preventDefault();
     setMessage({ text: '', type: '' });
-
     if (formData.tc.length !== 11) return setMessage({ text: 'HATA: TC Kimlik No tam 11 haneli olmalıdır.', type: 'error' });
     if (formData.sicil.length !== 5) return setMessage({ text: 'HATA: Sicil No tam 5 haneli olmalıdır.', type: 'error' });
     if (formData.rfid && formData.rfid.length !== 11) return setMessage({ text: 'HATA: RFID Kart No tam 11 haneli olmalıdır.', type: 'error' });
@@ -126,7 +108,6 @@ function PersonnelOperations() {
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     setMessage({ text: '', type: '' });
-
     if (formData.tc.length !== 11) return setMessage({ text: 'HATA: TC Kimlik No tam 11 haneli olmalıdır.', type: 'error' });
     if (formData.sicil.length !== 5) return setMessage({ text: 'HATA: Sicil No tam 5 haneli olmalıdır.', type: 'error' });
     if (formData.rfid && formData.rfid.length !== 11) return setMessage({ text: 'HATA: RFID Kart No tam 11 haneli olmalıdır.', type: 'error' });
@@ -195,13 +176,8 @@ function PersonnelOperations() {
         </button>
       </div>
 
-      {message.text && (
-        <div className={`p-4 rounded-lg text-sm font-bold border ${message.type === 'success' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-          {message.text}
-        </div>
-      )}
+      <AlertMessage message={message.text} type={message.type} />
 
-      {/* YENİ ORTAK ARAMA ÇUBUĞU */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative z-20">
         <AutocompleteSearch 
            label="İşlem Yapılacak Personeli Ara (Ad Soyad veya Sicil)"
@@ -214,7 +190,6 @@ function PersonnelOperations() {
         {loading && <div className="text-sm font-bold text-blue-600 mt-2 animate-pulse">Personel verileri yükleniyor...</div>}
       </div>
 
-      {/* PERSONEL DASHBOARD */}
       {selectedUser && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in-up">
           <div className="md:col-span-1 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col items-center text-center">
@@ -269,124 +244,93 @@ function PersonnelOperations() {
         </div>
       )}
 
-      {/* 0. YENİ PERSONEL EKLE MODALI */}
-      {activeModal === 'add' && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-4xl border border-slate-200 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-xl font-black text-slate-800 mb-4">Yeni Personel Kaydı</h3>
-            <form onSubmit={handleAddSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">T.C. Kimlik No (11 Hane)*</label><input type="text" maxLength="11" minLength="11" name="tc" value={formData.tc || ''} onChange={handleNumericChange} required placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">Ad Soyad *</label><input type="text" name="ad_soyad" value={formData.ad_soyad || ''} onChange={(e) => setFormData({...formData, ad_soyad: e.target.value})} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">Kurum Sicil No (5 Hane)*</label><input type="text" maxLength="5" minLength="5" name="sicil" value={formData.sicil || ''} onChange={handleNumericChange} required placeholder="5 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">RFID Kart No (11 Hane)</label><input type="text" maxLength="11" minLength="11" name="rfid" value={formData.rfid || ''} onChange={handleNumericChange} placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg bg-slate-50 outline-none font-mono" /></div>
-              
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">Şirket / Taşeron</label><input type="text" name="sirket" value={formData.sirket || ''} onChange={(e) => setFormData({...formData, sirket: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">Departman & Görev</label><input type="text" name="departman" value={formData.departman || ''} onChange={(e) => setFormData({...formData, departman: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">İşe Giriş Tarihi</label><input type="date" name="ise_giris" value={formData.ise_giris || ''} onChange={(e) => setFormData({...formData, ise_giris: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
-              <div className="md:col-span-2 flex justify-end space-x-3 mt-4">
-                <button type="button" onClick={() => setActiveModal(null)} className="px-6 py-2 bg-slate-200 font-bold rounded-lg hover:bg-slate-300">İptal</button>
-                <button type="submit" className="px-6 py-2 font-bold rounded-lg bg-slate-900 text-white hover:bg-slate-800">Personeli Kaydet</button>
-              </div>
-            </form>
+      {/* --- MODALLAR --- */}
+      <Modal isOpen={activeModal === 'add'} onClose={() => setActiveModal(null)} title="Yeni Personel Kaydı" maxWidth="max-w-4xl">
+        <form onSubmit={handleAddSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">T.C. Kimlik No (11 Hane)*</label><input type="text" maxLength="11" minLength="11" name="tc" value={formData.tc || ''} onChange={handleNumericChange} required placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" /></div>
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">Ad Soyad *</label><input type="text" name="ad_soyad" value={formData.ad_soyad || ''} onChange={(e) => setFormData({...formData, ad_soyad: e.target.value})} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">Kurum Sicil No (5 Hane)*</label><input type="text" maxLength="5" minLength="5" name="sicil" value={formData.sicil || ''} onChange={handleNumericChange} required placeholder="5 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" /></div>
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">RFID Kart No (11 Hane)</label><input type="text" maxLength="11" minLength="11" name="rfid" value={formData.rfid || ''} onChange={handleNumericChange} placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg bg-slate-50 outline-none font-mono" /></div>
+          
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">Şirket / Taşeron</label><input type="text" name="sirket" value={formData.sirket || ''} onChange={(e) => setFormData({...formData, sirket: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">Departman & Görev</label><input type="text" name="departman" value={formData.departman || ''} onChange={(e) => setFormData({...formData, departman: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">İşe Giriş Tarihi</label><input type="date" name="ise_giris" value={formData.ise_giris || ''} onChange={(e) => setFormData({...formData, ise_giris: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
+          <div className="md:col-span-2 flex justify-end space-x-3 mt-4">
+            <button type="button" onClick={() => setActiveModal(null)} className="px-6 py-2 bg-slate-200 font-bold rounded-lg hover:bg-slate-300">İptal</button>
+            <button type="submit" className="px-6 py-2 font-bold rounded-lg bg-slate-900 text-white hover:bg-slate-800">Personeli Kaydet</button>
           </div>
-        </div>
-      )}
+        </form>
+      </Modal>
       
-      {/* 1. DÜZENLE MODALI */}
-      {activeModal === 'edit' && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-4xl border border-slate-200 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-xl font-black text-slate-800 mb-4">Kimlik Bilgilerini Düzenle</h3>
-            <form onSubmit={handleEditSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">T.C. Kimlik No (11 Hane)*</label><input type="text" maxLength="11" minLength="11" name="tc" value={formData.tc || ''} onChange={handleNumericChange} required placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">Ad Soyad *</label><input type="text" name="ad_soyad" value={formData.ad_soyad || ''} onChange={(e) => setFormData({...formData, ad_soyad: e.target.value})} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">Kurum Sicil No (5 Hane)*</label><input type="text" maxLength="5" minLength="5" name="sicil" value={formData.sicil || ''} onChange={handleNumericChange} required placeholder="5 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">RFID Kart No (11 Hane)</label><input type="text" maxLength="11" minLength="11" name="rfid" value={formData.rfid || ''} onChange={handleNumericChange} placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg bg-slate-50 outline-none font-mono" /></div>
-              
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">Şirket / Taşeron</label><input type="text" name="sirket" value={formData.sirket || ''} onChange={(e) => setFormData({...formData, sirket: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">Departman & Görev</label><input type="text" name="departman" value={formData.departman || ''} onChange={(e) => setFormData({...formData, departman: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
-              <div className="md:col-span-2 flex justify-end space-x-3 mt-4">
-                <button type="button" onClick={() => setActiveModal(null)} className="px-6 py-2 bg-slate-200 font-bold rounded-lg hover:bg-slate-300">İptal</button>
-                <button type="submit" className="px-6 py-2 font-bold rounded-lg bg-blue-600 text-white hover:bg-blue-700">Değişiklikleri Kaydet</button>
-              </div>
-            </form>
+      <Modal isOpen={activeModal === 'edit'} onClose={() => setActiveModal(null)} title="Kimlik Bilgilerini Düzenle" maxWidth="max-w-4xl">
+        <form onSubmit={handleEditSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">T.C. Kimlik No (11 Hane)*</label><input type="text" maxLength="11" minLength="11" name="tc" value={formData.tc || ''} onChange={handleNumericChange} required placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" /></div>
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">Ad Soyad *</label><input type="text" name="ad_soyad" value={formData.ad_soyad || ''} onChange={(e) => setFormData({...formData, ad_soyad: e.target.value})} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">Kurum Sicil No (5 Hane)*</label><input type="text" maxLength="5" minLength="5" name="sicil" value={formData.sicil || ''} onChange={handleNumericChange} required placeholder="5 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" /></div>
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">RFID Kart No (11 Hane)</label><input type="text" maxLength="11" minLength="11" name="rfid" value={formData.rfid || ''} onChange={handleNumericChange} placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg bg-slate-50 outline-none font-mono" /></div>
+          
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">Şirket / Taşeron</label><input type="text" name="sirket" value={formData.sirket || ''} onChange={(e) => setFormData({...formData, sirket: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">Departman & Görev</label><input type="text" name="departman" value={formData.departman || ''} onChange={(e) => setFormData({...formData, departman: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
+          <div className="md:col-span-2 flex justify-end space-x-3 mt-4">
+            <button type="button" onClick={() => setActiveModal(null)} className="px-6 py-2 bg-slate-200 font-bold rounded-lg hover:bg-slate-300">İptal</button>
+            <button type="submit" className="px-6 py-2 font-bold rounded-lg bg-blue-600 text-white hover:bg-blue-700">Değişiklikleri Kaydet</button>
           </div>
-        </div>
-      )}
+        </form>
+      </Modal>
 
-      {/* 2. YETKİ MODALI */}
-      {activeModal === 'auth' && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200">
-            <h3 className="text-xl font-black text-slate-800 mb-4">Geçiş İzinleri</h3>
-            <form onSubmit={handleAuthSubmit}>
-              <div className="max-h-64 overflow-y-auto border border-slate-200 rounded-lg p-2 mb-4 bg-slate-50">
-                {allDoors.map(door => (
-                  <label key={door.ID} className="flex items-center p-3 hover:bg-white cursor-pointer border-b border-slate-200 last:border-0 rounded transition-colors">
-                    <input type="checkbox" className="w-5 h-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500" 
-                      checked={authData.includes(door.ID)} 
-                      onChange={() => {
-                        setAuthData(prev => prev.includes(door.ID) ? prev.filter(id => id !== door.ID) : [...prev, door.ID]);
-                    }}/>
-                    <span className="ml-3 text-sm font-bold text-slate-700">{door.Kapi_Adi}</span>
-                  </label>
-                ))}
-              </div>
-              <div className="flex justify-end space-x-3">
-                <button type="button" onClick={() => setActiveModal(null)} className="px-4 py-2 bg-slate-200 font-bold rounded-lg hover:bg-slate-300">İptal</button>
-                <button type="submit" className="px-4 py-2 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700">Yetkileri Kaydet</button>
-              </div>
-            </form>
+      <Modal isOpen={activeModal === 'auth'} onClose={() => setActiveModal(null)} title="Geçiş İzinleri" maxWidth="max-w-md">
+        <form onSubmit={handleAuthSubmit}>
+          <div className="max-h-64 overflow-y-auto border border-slate-200 rounded-lg p-2 mb-4 bg-slate-50">
+            {allDoors.map(door => (
+              <label key={door.ID} className="flex items-center p-3 hover:bg-white cursor-pointer border-b border-slate-200 last:border-0 rounded transition-colors">
+                <input type="checkbox" className="w-5 h-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500" 
+                  checked={authData.includes(door.ID)} 
+                  onChange={() => {
+                    setAuthData(prev => prev.includes(door.ID) ? prev.filter(id => id !== door.ID) : [...prev, door.ID]);
+                }}/>
+                <span className="ml-3 text-sm font-bold text-slate-700">{door.Kapi_Adi}</span>
+              </label>
+            ))}
           </div>
-        </div>
-      )}
+          <div className="flex justify-end space-x-3">
+            <button type="button" onClick={() => setActiveModal(null)} className="px-4 py-2 bg-slate-200 font-bold rounded-lg hover:bg-slate-300">İptal</button>
+            <button type="submit" className="px-4 py-2 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700">Yetkileri Kaydet</button>
+          </div>
+        </form>
+      </Modal>
 
-      {/* 3. VARDİYA MODALI */}
-      {activeModal === 'shift' && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200">
-            <h3 className="text-xl font-black text-slate-800 mb-4">Vardiya Ataması</h3>
-            <form onSubmit={handleShiftSubmit}>
-              <select className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none mb-6" 
-                value={shiftData} onChange={(e) => setShiftData(e.target.value)}>
-                <option value="">-- Vardiya Atanmamış --</option>
-                {allShifts.map(shift => <option key={shift.ID} value={shift.ID}>{shift.Vardiya_Adi}</option>)}
-              </select>
-              <div className="flex justify-end space-x-3">
-                <button type="button" onClick={() => setActiveModal(null)} className="px-4 py-2 bg-slate-200 font-bold rounded-lg hover:bg-slate-300">İptal</button>
-                <button type="submit" className="px-4 py-2 bg-amber-500 text-white font-bold rounded-lg hover:bg-amber-600">Vardiyayı Kaydet</button>
-              </div>
-            </form>
+      <Modal isOpen={activeModal === 'shift'} onClose={() => setActiveModal(null)} title="Vardiya Ataması" maxWidth="max-w-md">
+        <form onSubmit={handleShiftSubmit}>
+          <select className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none mb-6" 
+            value={shiftData} onChange={(e) => setShiftData(e.target.value)}>
+            <option value="">-- Vardiya Atanmamış --</option>
+            {allShifts.map(shift => <option key={shift.ID} value={shift.ID}>{shift.Vardiya_Adi}</option>)}
+          </select>
+          <div className="flex justify-end space-x-3">
+            <button type="button" onClick={() => setActiveModal(null)} className="px-4 py-2 bg-slate-200 font-bold rounded-lg hover:bg-slate-300">İptal</button>
+            <button type="submit" className="px-4 py-2 bg-amber-500 text-white font-bold rounded-lg hover:bg-amber-600">Vardiyayı Kaydet</button>
           </div>
-        </div>
-      )}
+        </form>
+      </Modal>
 
-      {/* 4. DURUM (İŞTEN ÇIKIŞ/İŞE ALIM) MODALI */}
-      {activeModal === 'status' && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200">
-            <h3 className={`text-xl font-black mb-4 ${selectedUser.Durum ? 'text-red-600' : 'text-green-600'}`}>
-              {selectedUser.Durum ? 'İşten Çıkış İşlemi' : 'İşe Alım İşlemi'}
-            </h3>
-            <form onSubmit={handleStatusSubmit} className="space-y-4">
-              {selectedUser.Durum ? (
-                <>
-                  <div><label className="block text-xs font-bold text-slate-500 mb-1">Çıkış Tarihi *</label><input type="date" value={exitData.cikis_tarihi} onChange={(e) => setExitData({...exitData, cikis_tarihi: e.target.value})} required className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-red-500" /></div>
-                  <div><label className="block text-xs font-bold text-slate-500 mb-1">Çıkış Nedeni</label><textarea value={exitData.cikis_nedeni} onChange={(e) => setExitData({...exitData, cikis_nedeni: e.target.value})} rows="3" className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-red-500 resize-none"></textarea></div>
-                </>
-              ) : (
-                <p className="text-sm font-medium text-slate-600 mb-4">Bu personeli tekrar sisteme dahil etmek istediğinize emin misiniz? (Geçmiş logları korunacaktır).</p>
-              )}
-              <div className="flex justify-end space-x-3 mt-6">
-                <button type="button" onClick={() => setActiveModal(null)} className="px-4 py-2 bg-slate-100 font-bold rounded-lg hover:bg-slate-200">İptal</button>
-                <button type="submit" className={`px-4 py-2 text-white font-bold rounded-lg ${selectedUser.Durum ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}>
-                  {selectedUser.Durum ? 'İlişiği Kes' : 'İşe Al'}
-                </button>
-              </div>
-            </form>
+      <Modal isOpen={activeModal === 'status'} onClose={() => setActiveModal(null)} title={selectedUser?.Durum ? 'İşten Çıkış İşlemi' : 'İşe Alım İşlemi'} maxWidth="max-w-md">
+        <form onSubmit={handleStatusSubmit} className="space-y-4">
+          {selectedUser?.Durum ? (
+            <>
+              <div><label className="block text-xs font-bold text-slate-500 mb-1">Çıkış Tarihi *</label><input type="date" value={exitData.cikis_tarihi} onChange={(e) => setExitData({...exitData, cikis_tarihi: e.target.value})} required className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-red-500" /></div>
+              <div><label className="block text-xs font-bold text-slate-500 mb-1">Çıkış Nedeni</label><textarea value={exitData.cikis_nedeni} onChange={(e) => setExitData({...exitData, cikis_nedeni: e.target.value})} rows="3" className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-red-500 resize-none"></textarea></div>
+            </>
+          ) : (
+            <p className="text-sm font-medium text-slate-600 mb-4">Bu personeli tekrar sisteme dahil etmek istediğinize emin misiniz? (Geçmiş logları korunacaktır).</p>
+          )}
+          <div className="flex justify-end space-x-3 mt-6">
+            <button type="button" onClick={() => setActiveModal(null)} className="px-4 py-2 bg-slate-100 font-bold rounded-lg hover:bg-slate-200">İptal</button>
+            <button type="submit" className={`px-4 py-2 text-white font-bold rounded-lg ${selectedUser?.Durum ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}>
+              {selectedUser?.Durum ? 'İlişiği Kes' : 'İşe Al'}
+            </button>
           </div>
-        </div>
-      )}
+        </form>
+      </Modal>
 
     </div>
   );

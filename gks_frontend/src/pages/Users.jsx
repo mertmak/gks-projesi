@@ -1,13 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
 import { socket } from '../api/socket';
+
+// ORTAK BİLEŞENLER
 import CustomDataGrid from '../components/CustomDataGrid';
-import AutocompleteSearch from '../components/AutoCompleteSearch';
+import AutocompleteSearch from '../components/AutocompleteSearch';
+import Modal from '../components/Modal'; // YENİ: Modal bileşeni
+import AlertMessage from '../components/AlertMessage';
 
 function Users() {
-  // YENİ: Başlangıç ve bitiş tarihleri yerine Durum, Departman ve Arama filtreleri eklendi
   const [filters, setFilters] = useState({ durum: 'tumu', departman: '', arama: '' });
-  
   const [hasSearched, setHasSearched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState([]);
@@ -16,31 +18,25 @@ function Users() {
   const [deptSuggestions, setDeptSuggestions] = useState([]);
   const [message, setMessage] = useState({ text: '', type: '' });
   
-  // FORM / DÜZENLEME MODALI STATE'LERİ
   const [showAddEditModal, setShowAddEditModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editId, setEditId] = useState(null);
   const [formData, setFormData] = useState({ ad_soyad: '', rfid: '', tc: '', sicil: '', sirket: '', departman: '', gorev: '', ise_giris: '' });
 
-  // ÇIKIŞ MODALI
   const [showExitModal, setShowExitModal] = useState(false);
   const [exitUser, setExitUser] = useState(null);
   const [exitData, setExitData] = useState({ cikis_tarihi: new Date().toISOString().split('T')[0], cikis_nedeni: '' });
   
-  // YETKİ MODALI
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authData, setAuthData] = useState({ user: null, allDoors: [], selectedDoors: [] });
 
-  // VARDİYA MODALI
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [shiftData, setShiftData] = useState({ user: null, allShifts: [], selectedShiftId: '' });
 
-  // HIZLI İŞLEM PANELİ STATE'LERİ
   const [quickSearch, setQuickSearch] = useState('');
   const [quickSuggestions, setQuickSuggestions] = useState([]);
   const [quickSelectedUser, setQuickSelectedUser] = useState(null);
 
-  // TOPLU VARDİYA STATE'LERİ
   const [showBulkShiftModal, setShowBulkShiftModal] = useState(false);
   const [bulkShiftData, setBulkShiftData] = useState({ hedef_turu: 'Departman', hedef_deger: '', vardiya_id: '', allShifts: [] });
 
@@ -55,37 +51,24 @@ function Users() {
       setLoading(false);
     }
   };
+
   const handleSearchInputChange = async (e) => {
     const value = e.target.value;
     setFilters({ ...filters, arama: value }); 
     if (value.length >= 2) {
       try {
         const response = await api.get('/users', { params: { arama: value } });
-        // YENİ: Veriyi AutocompleteSearch bileşeninin okuyacağı formata haritalıyoruz
         const formattedSuggestions = response.data.map(user => ({
            label: user.Ad_Soyad,
            subLabel: `Sicil: ${user.Sicil_No} | ${user.Departman || 'Departman Yok'}`,
            value: user.Ad_Soyad,
-           originalData: user // İleride objenin tamamı gerekirse diye tutuyoruz
+           originalData: user 
         }));
         setSuggestions(formattedSuggestions.slice(0, 5)); 
       } catch (err) {}
     } else {
       setSuggestions([]); 
     }
-  };
- 
-  const handleFetchData = async (e) => {
-    e.preventDefault();
-    setHasSearched(true);
-    setSuggestions([]); 
-    await fetchUsers();
-  };
-
-  const handleNumericChange = (e) => {
-    const { name, value } = e.target;
-    const onlyNums = value.replace(/[^0-9]/g, ''); 
-    setFormData({ ...formData, [name]: onlyNums });
   };
 
   const handleDeptSearchChange = async (e) => {
@@ -94,13 +77,31 @@ function Users() {
     if (value.length >= 2) {
       try {
         const response = await api.get('/users', { params: { departman: value } });
-        // Aynı departmandan 50 kişi dönse bile, Set objesi ile tekrar edenleri temizleyip tek isim haline getiriyoruz
         const uniqueDepts = [...new Set(response.data.map(u => u.Departman).filter(d => d && d.trim() !== ''))];
-        setDeptSuggestions(uniqueDepts.slice(0, 5)); 
+        
+        const formattedDepts = uniqueDepts.map(dept => ({
+           label: dept,
+           value: dept
+        }));
+        setDeptSuggestions(formattedDepts.slice(0, 5)); 
       } catch (err) {}
     } else {
       setDeptSuggestions([]); 
     }
+  };
+ 
+  const handleFetchData = async (e) => {
+    e.preventDefault();
+    setHasSearched(true);
+    setSuggestions([]); 
+    setDeptSuggestions([]);
+    await fetchUsers();
+  };
+
+  const handleNumericChange = (e) => {
+    const { name, value } = e.target;
+    const onlyNums = value.replace(/[^0-9]/g, ''); 
+    setFormData({ ...formData, [name]: onlyNums });
   };
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -183,7 +184,6 @@ function Users() {
     setShowAddEditModal(false); 
   };
 
-  // --- YETKİ FONKSİYONLARI ---
   const handleAuthClick = async (user) => {
     try {
       const doorsRes = await api.get('/doors');
@@ -205,7 +205,6 @@ function Users() {
     } catch (err) { alert("Yetkiler kaydedilemedi."); }
   };
 
-  // --- VARDİYA ATAMA FONKSİYONLARI ---
   const handleShiftClick = async (user) => {
     try {
       const shiftsRes = await api.get('/shifts');
@@ -225,23 +224,19 @@ function Users() {
     } catch (err) { alert("Vardiya ataması kaydedilemedi."); }
   };
 
-  // --- HIZLI ARAMA (TABLO DIŞI) ---
-const handleQuickSearchChange = async (e) => {
+  const handleQuickSearchChange = async (e) => {
     const value = e.target.value;
     setQuickSearch(value);
     setQuickSelectedUser(null);
     if (value.length >= 2) {
       try {
         const response = await api.get('/users', { params: { arama: value } });
-        
-        // YENİ: Veriyi bileşenin anlayacağı formata çeviriyoruz
         const formattedSuggestions = response.data.map(user => ({
            label: user.Ad_Soyad,
            subLabel: `Sicil: ${user.Sicil_No} | ${user.Departman || 'Departman Yok'}`,
            value: user.Ad_Soyad,
-           originalData: user // Seçildiğinde tüm personel bilgisine ihtiyacımız var
+           originalData: user 
         }));
-        
         setQuickSuggestions(formattedSuggestions.slice(0, 5));
       } catch (err) {}
     } else {
@@ -249,7 +244,6 @@ const handleQuickSearchChange = async (e) => {
     }
   };
 
-  // --- TOPLU VARDİYA ATAMA ---
   const openBulkShiftModal = async () => {
     try {
       const shiftsRes = await api.get('/shifts');
@@ -276,19 +270,9 @@ const handleQuickSearchChange = async (e) => {
     }
   };
 
-  // AG GRID SÜTUNLARI
   const colDefs = useMemo(() => [
     { field: 'Sicil_No', headerName: 'Sicil No', width: 120, filter: true },
-    { 
-      field: 'Ad_Soyad', 
-      headerName: 'Ad Soyad', 
-      flex: 1, 
-      minWidth: 180, 
-      filter: true,
-      comparator: (valueA, valueB) => {
-        return (valueA || '').localeCompare(valueB || '', 'tr', { sensitivity: 'base' });
-      }
-    },
+    { field: 'Ad_Soyad', headerName: 'Ad Soyad', flex: 1, minWidth: 180, filter: true },
     { field: 'Departman', headerName: 'Departman', flex: 1, minWidth: 160, filter: true },
     { 
       field: 'Durum', headerName: 'Durum', width: 100,
@@ -311,7 +295,6 @@ const handleQuickSearchChange = async (e) => {
     }
   ], []);
 
-
   useEffect(() => {
     const refreshUsers = async () => {
       if (!hasSearched) return;
@@ -322,16 +305,12 @@ const handleQuickSearchChange = async (e) => {
     };
 
     socket.on('users_updated', refreshUsers);
-
-    return () => {
-      socket.off('users_updated', refreshUsers);
-    };
+    return () => { socket.off('users_updated', refreshUsers); };
   }, [hasSearched, filters]);
 
   return (
     <div className="space-y-6 relative mt-4">
 
-      {/* --- YENİ PERSONEL EKLE BUTONU --- */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
         <div>
           <h2 className="text-xl font-bold text-slate-800">Personel Listesi ve Hızlı İşlemler</h2>
@@ -350,123 +329,96 @@ const handleQuickSearchChange = async (e) => {
         </button>
       </div>
       
-      {/* ---------------- MODALLAR ---------------- */}
-      {showAddEditModal && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-4xl border border-slate-200 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-xl font-black text-slate-800 mb-4">
-              {isEditing ? 'Personel Düzenle' : 'Yeni Personel Kaydı'}
-            </h3>
-            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">T.C. Kimlik No (11 Hane) *</label><input type="text" maxLength="11" minLength="11" name="tc" value={formData.tc} onChange={handleNumericChange} required placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono tracking-widest" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">Ad Soyad *</label><input type="text" name="ad_soyad" value={formData.ad_soyad} onChange={handleChange} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">Kurum Sicil No (5 Hane) *</label><input type="text" maxLength="5" minLength="5" name="sicil" value={formData.sicil} onChange={handleNumericChange} required placeholder="5 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono tracking-widest" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">RFID Kart No (11 Hane)</label><input type="text" maxLength="11" minLength="11" name="rfid" value={formData.rfid} onChange={handleNumericChange} placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg bg-slate-50 outline-none font-mono tracking-widest" /></div>
-              
-              <div className="md:col-span-2"><label className="block text-xs font-bold text-slate-500 mb-1">Şirket / Taşeron</label><input type="text" name="sirket" value={formData.sirket} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">Departman & Görev</label><input type="text" name="departman" value={formData.departman} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">İşe Giriş Tarihi</label><input type="date" name="ise_giris" value={formData.ise_giris} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
-              
-              <div className="md:col-span-4 flex justify-end space-x-3 mt-4">
-                <button type="button" onClick={cancelEdit} className="px-6 py-2 bg-slate-200 font-bold rounded-lg hover:bg-slate-300">İptal</button>
-                <button type="submit" className={`px-6 py-2 font-bold rounded-lg text-white hover:opacity-90 ${isEditing ? 'bg-orange-500' : 'bg-slate-900'}`}>
-                  {isEditing ? 'Bilgileri Güncelle' : 'Kaydet'}
-                </button>
-              </div>
-            </form>
+      {/* --- MODALLAR --- */}
+      
+      <Modal isOpen={showAddEditModal} onClose={cancelEdit} title={isEditing ? 'Personel Düzenle' : 'Yeni Personel Kaydı'} maxWidth="max-w-4xl">
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">T.C. Kimlik No (11 Hane) *</label><input type="text" maxLength="11" minLength="11" name="tc" value={formData.tc} onChange={handleNumericChange} required placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono tracking-widest" /></div>
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">Ad Soyad *</label><input type="text" name="ad_soyad" value={formData.ad_soyad} onChange={handleChange} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">Kurum Sicil No (5 Hane) *</label><input type="text" maxLength="5" minLength="5" name="sicil" value={formData.sicil} onChange={handleNumericChange} required placeholder="5 haneli sayı" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono tracking-widest" /></div>
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">RFID Kart No (11 Hane)</label><input type="text" maxLength="11" minLength="11" name="rfid" value={formData.rfid} onChange={handleNumericChange} placeholder="11 haneli sayı" className="w-full px-3 py-2 border rounded-lg bg-slate-50 outline-none font-mono tracking-widest" /></div>
+          
+          <div className="md:col-span-2"><label className="block text-xs font-bold text-slate-500 mb-1">Şirket / Taşeron</label><input type="text" name="sirket" value={formData.sirket} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">Departman & Görev</label><input type="text" name="departman" value={formData.departman} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">İşe Giriş Tarihi</label><input type="date" name="ise_giris" value={formData.ise_giris} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg outline-none" /></div>
+          
+          <div className="md:col-span-4 flex justify-end space-x-3 mt-4">
+            <button type="button" onClick={cancelEdit} className="px-6 py-2 bg-slate-200 font-bold rounded-lg hover:bg-slate-300">İptal</button>
+            <button type="submit" className={`px-6 py-2 font-bold rounded-lg text-white hover:opacity-90 ${isEditing ? 'bg-orange-500' : 'bg-slate-900'}`}>
+              {isEditing ? 'Bilgileri Güncelle' : 'Kaydet'}
+            </button>
           </div>
-        </div>
-      )}
+        </form>
+      </Modal>
 
-      {showExitModal && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200">
-            <h3 className="text-xl font-black text-red-600 mb-2">İşten Çıkış / Pasife Al</h3>
-            <form onSubmit={handleExitSubmit} className="space-y-4 mt-4">
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">İşten Çıkış Tarihi *</label><input type="date" name="cikis_tarihi" value={exitData.cikis_tarihi} onChange={handleExitChange} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-red-500 outline-none" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1">Çıkış Nedeni (Opsiyonel)</label><textarea name="cikis_nedeni" value={exitData.cikis_nedeni} onChange={handleExitChange} rows="3" className="w-full px-3 py-2 border rounded-lg outline-none resize-none"></textarea></div>
-              <div className="flex justify-end space-x-3 mt-6"><button type="button" onClick={() => setShowExitModal(false)} className="px-4 py-2 bg-slate-100 font-bold rounded-lg hover:bg-slate-200">İptal</button><button type="submit" className="px-4 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700">Onayla ve Kapat</button></div>
-            </form>
+      <Modal isOpen={showExitModal} onClose={() => setShowExitModal(false)} title="İşten Çıkış / Pasife Al" maxWidth="max-w-md">
+        <form onSubmit={handleExitSubmit} className="space-y-4">
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">İşten Çıkış Tarihi *</label><input type="date" name="cikis_tarihi" value={exitData.cikis_tarihi} onChange={handleExitChange} required className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-red-500 outline-none" /></div>
+          <div><label className="block text-xs font-bold text-slate-500 mb-1">Çıkış Nedeni (Opsiyonel)</label><textarea name="cikis_nedeni" value={exitData.cikis_nedeni} onChange={handleExitChange} rows="3" className="w-full px-3 py-2 border rounded-lg outline-none resize-none"></textarea></div>
+          <div className="flex justify-end space-x-3 mt-6"><button type="button" onClick={() => setShowExitModal(false)} className="px-4 py-2 bg-slate-100 font-bold rounded-lg hover:bg-slate-200">İptal</button><button type="submit" className="px-4 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700">Onayla ve Kapat</button></div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} title="Kapı Geçiş Yetkileri" maxWidth="max-w-md">
+        <p className="text-sm text-slate-600 mb-4"><span className="font-bold">{authData.user?.Ad_Soyad}</span> için izinli kapıları seçin.</p>
+        <form onSubmit={handleAuthSubmit}>
+          <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-lg p-2 mb-4 bg-slate-50">
+            {authData.allDoors.map(door => (
+              <label key={door.ID} className="flex items-center p-3 hover:bg-white cursor-pointer border-b border-slate-200 last:border-0 rounded transition-colors">
+                <input type="checkbox" className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500" checked={authData.selectedDoors.includes(door.ID)} onChange={() => {
+                    setAuthData(prev => ({...prev, selectedDoors: prev.selectedDoors.includes(door.ID) ? prev.selectedDoors.filter(id => id !== door.ID) : [...prev.selectedDoors, door.ID]}));
+                }}/>
+                <span className="ml-3 text-sm font-bold text-slate-700">{door.Kapi_Adi}</span>
+              </label>
+            ))}
           </div>
-        </div>
-      )}
+          <div className="flex justify-end space-x-3"><button type="button" onClick={() => setShowAuthModal(false)} className="px-4 py-2 bg-slate-200 font-bold rounded-lg">İptal</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg">Kaydet</button></div>
+        </form>
+      </Modal>
 
-      {showAuthModal && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200">
-            <h3 className="text-xl font-black text-slate-800 mb-2">Kapı Geçiş Yetkileri</h3>
-            <p className="text-sm text-slate-600 mb-4"><span className="font-bold">{authData.user?.Ad_Soyad}</span> için izinli kapıları seçin.</p>
-            <form onSubmit={handleAuthSubmit}>
-              <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-lg p-2 mb-4 bg-slate-50">
-                {authData.allDoors.map(door => (
-                  <label key={door.ID} className="flex items-center p-3 hover:bg-white cursor-pointer border-b border-slate-200 last:border-0 rounded transition-colors">
-                    <input type="checkbox" className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500" checked={authData.selectedDoors.includes(door.ID)} onChange={() => {
-                        setAuthData(prev => ({...prev, selectedDoors: prev.selectedDoors.includes(door.ID) ? prev.selectedDoors.filter(id => id !== door.ID) : [...prev.selectedDoors, door.ID]}));
-                    }}/>
-                    <span className="ml-3 text-sm font-bold text-slate-700">{door.Kapi_Adi}</span>
-                  </label>
-                ))}
-              </div>
-              <div className="flex justify-end space-x-3"><button type="button" onClick={() => setShowAuthModal(false)} className="px-4 py-2 bg-slate-200 font-bold rounded-lg">İptal</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg">Kaydet</button></div>
-            </form>
-          </div>
-        </div>
-      )}
+      <Modal isOpen={showShiftModal} onClose={() => setShowShiftModal(false)} title="Bireysel Vardiya Ataması" maxWidth="max-w-md">
+        <p className="text-sm text-slate-600 mb-4"><span className="font-bold">{shiftData.user?.Ad_Soyad}</span> adlı personelin vardiyasını belirleyin.</p>
+        <form onSubmit={handleShiftSubmit}>
+          <select className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" value={shiftData.selectedShiftId} onChange={(e) => setShiftData({...shiftData, selectedShiftId: e.target.value})}>
+            <option value="">-- Vardiya Atanmamış --</option>
+            {shiftData.allShifts.map(shift => <option key={shift.ID} value={shift.ID}>{shift.Vardiya_Adi}</option>)}
+          </select>
+          <div className="flex justify-end space-x-3 mt-6"><button type="button" onClick={() => setShowShiftModal(false)} className="px-4 py-2 bg-slate-200 font-bold rounded-lg">İptal</button><button type="submit" className="px-4 py-2 bg-amber-500 text-white font-bold rounded-lg">Vardiyayı Kaydet</button></div>
+        </form>
+      </Modal>
 
-      {showShiftModal && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200">
-            <h3 className="text-xl font-black text-slate-800 mb-2">Bireysel Vardiya Ataması</h3>
-            <p className="text-sm text-slate-600 mb-4"><span className="font-bold">{shiftData.user?.Ad_Soyad}</span> adlı personelin vardiyasını belirleyin.</p>
-            <form onSubmit={handleShiftSubmit}>
-              <select className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" value={shiftData.selectedShiftId} onChange={(e) => setShiftData({...shiftData, selectedShiftId: e.target.value})}>
-                <option value="">-- Vardiya Atanmamış --</option>
-                {shiftData.allShifts.map(shift => <option key={shift.ID} value={shift.ID}>{shift.Vardiya_Adi}</option>)}
+      <Modal isOpen={showBulkShiftModal} onClose={() => setShowBulkShiftModal(false)} title="Toplu Vardiya Atama" maxWidth="max-w-md">
+        <p className="text-sm text-slate-600 mb-4">Bir departman veya şirketteki tüm personellerin vardiyasını tek tıkla değiştirin.</p>
+        <form onSubmit={handleBulkShiftSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 mb-1">Hedef Türü</label>
+              <select className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-amber-500" value={bulkShiftData.hedef_turu} onChange={(e) => setBulkShiftData({...bulkShiftData, hedef_turu: e.target.value})}>
+                <option value="Departman">Departman'a Göre</option>
+                <option value="Sirket">Şirket / Taşeron'a Göre</option>
               </select>
-              <div className="flex justify-end space-x-3 mt-6"><button type="button" onClick={() => setShowShiftModal(false)} className="px-4 py-2 bg-slate-200 font-bold rounded-lg">İptal</button><button type="submit" className="px-4 py-2 bg-amber-500 text-white font-bold rounded-lg">Vardiyayı Kaydet</button></div>
-            </form>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 mb-1">Hedef Adı (Tam Eşleşme)</label>
+              <input type="text" placeholder="Örn: Bilgi İşlem" className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-amber-500" value={bulkShiftData.hedef_deger} onChange={(e) => setBulkShiftData({...bulkShiftData, hedef_deger: e.target.value})} required />
+            </div>
           </div>
-        </div>
-      )}
-
-      {showBulkShiftModal && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200">
-            <h3 className="text-xl font-black text-amber-600 mb-2">Toplu Vardiya Atama</h3>
-            <p className="text-sm text-slate-600 mb-4">Bir departman veya şirketteki tüm personellerin vardiyasını tek tıkla değiştirin.</p>
-            <form onSubmit={handleBulkShiftSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-1">Hedef Türü</label>
-                  <select className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-amber-500" value={bulkShiftData.hedef_turu} onChange={(e) => setBulkShiftData({...bulkShiftData, hedef_turu: e.target.value})}>
-                    <option value="Departman">Departman'a Göre</option>
-                    <option value="Sirket">Şirket / Taşeron'a Göre</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-1">Hedef Adı (Tam Eşleşme)</label>
-                  <input type="text" placeholder="Örn: Bilgi İşlem" className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-amber-500" value={bulkShiftData.hedef_deger} onChange={(e) => setBulkShiftData({...bulkShiftData, hedef_deger: e.target.value})} required />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">Atanacak Vardiya</label>
-                <select className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-amber-500" value={bulkShiftData.vardiya_id} onChange={(e) => setBulkShiftData({...bulkShiftData, vardiya_id: e.target.value})}>
-                  <option value="">-- Vardiyaları İptal Et --</option>
-                  {bulkShiftData.allShifts.map(shift => <option key={shift.ID} value={shift.ID}>{shift.Vardiya_Adi}</option>)}
-                </select>
-              </div>
-              <div className="flex justify-end space-x-3 mt-6">
-                <button type="button" onClick={() => setShowBulkShiftModal(false)} className="px-4 py-2 bg-slate-100 font-bold rounded-lg hover:bg-slate-200">İptal</button>
-                <button type="submit" className="px-4 py-2 bg-amber-500 text-white font-bold rounded-lg hover:bg-amber-600">Toplu İşlemi Başlat</button>
-              </div>
-            </form>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Atanacak Vardiya</label>
+            <select className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-amber-500" value={bulkShiftData.vardiya_id} onChange={(e) => setBulkShiftData({...bulkShiftData, vardiya_id: e.target.value})}>
+              <option value="">-- Vardiyaları İptal Et --</option>
+              {bulkShiftData.allShifts.map(shift => <option key={shift.ID} value={shift.ID}>{shift.Vardiya_Adi}</option>)}
+            </select>
           </div>
-        </div>
-      )}
+          <div className="flex justify-end space-x-3 mt-6">
+            <button type="button" onClick={() => setShowBulkShiftModal(false)} className="px-4 py-2 bg-slate-100 font-bold rounded-lg hover:bg-slate-200">İptal</button>
+            <button type="submit" className="px-4 py-2 bg-amber-500 text-white font-bold rounded-lg hover:bg-amber-600">Toplu İşlemi Başlat</button>
+          </div>
+        </form>
+      </Modal>
 
-      {message.text && <div className={`p-4 rounded-lg text-sm font-bold border ${message.type === 'success' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>{message.text}</div>}
-
-      {/* --- HIZLI İŞLEM PANELİ (TABLO DIŞI) --- */}
+      <AlertMessage message={message.text} type={message.type} />
+      {/* --- HIZLI İŞLEM PANELİ --- */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-6 md:items-end z-20 relative">
         <div className="flex-1">
           <AutocompleteSearch 
@@ -476,7 +428,6 @@ const handleQuickSearchChange = async (e) => {
             onChange={handleQuickSearchChange}
             suggestions={quickSuggestions}
             onSelect={(item) => {
-              // item.originalData'yı fonksiyonda formatlarken içine koymuştuk
               setQuickSelectedUser(item.originalData);
               setQuickSearch(item.value);
               setQuickSuggestions([]);
@@ -502,7 +453,6 @@ const handleQuickSearchChange = async (e) => {
         </div>
       </div>
 
-{/* --- YENİ PERSONEL ARAMA FİLTRESİ --- */}
       <form onSubmit={handleFetchData} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4 items-end relative z-10">
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1">Durum Filtresi</label>
@@ -517,65 +467,32 @@ const handleQuickSearchChange = async (e) => {
           </select>
         </div>
         
-        {/* YENİ: DEPARTMAN ARAMA VE ÖNERİ KUTUSU */}
-        <div className="relative">
-          <label className="block text-xs font-bold text-slate-600 mb-1">Departman</label>
-          <input 
-            type="text" 
-            placeholder="Örn: Bilgi İşlem" 
-            value={filters.departman} 
-            onChange={handleDeptSearchChange} 
-            onBlur={() => setTimeout(() => setDeptSuggestions([]), 200)} 
-            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" 
+        <div className="relative z-50">
+          <AutocompleteSearch 
+            label="Departman"
+            placeholder="Örn: Bilgi İşlem"
+            value={filters.departman}
+            onChange={handleDeptSearchChange}
+            suggestions={deptSuggestions}
+            onSelect={(item) => {
+              setFilters({...filters, departman: item.value});
+              setDeptSuggestions([]);
+            }}
           />
-          
-          {deptSuggestions.length > 0 && (
-            <ul className="absolute z-50 w-full bg-white border border-slate-200 shadow-2xl rounded-lg mt-1 left-0 divide-y divide-slate-100 max-h-60 overflow-y-auto">
-              {deptSuggestions.map((dept, idx) => (
-                <li 
-                  key={idx} 
-                  onClick={() => { 
-                    setFilters({...filters, departman: dept}); 
-                    setDeptSuggestions([]); 
-                  }}
-                  className="px-4 py-3 hover:bg-blue-50 cursor-pointer flex flex-col"
-                >
-                  <span className="font-bold text-slate-800 text-sm">{dept}</span>
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
         
-        {/* KİŞİ / SİCİL ARAMA KUTUSU */}
-        <div className="relative">
-          <label className="block text-xs font-bold text-slate-600 mb-1">Ad Soyad / Sicil No / TC</label>
-          <input 
-            type="text" 
-            placeholder="Tabloyu filtrele..." 
-            value={filters.arama} 
-            onChange={handleSearchInputChange} 
-            onBlur={() => setTimeout(() => setSuggestions([]), 200)} 
-            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-blue-500" 
+        <div className="relative z-50">
+          <AutocompleteSearch 
+            label="Ad Soyad / Sicil No / TC"
+            placeholder="Tabloyu filtrele..."
+            value={filters.arama}
+            onChange={handleSearchInputChange}
+            suggestions={suggestions}
+            onSelect={(item) => {
+              setFilters({...filters, arama: item.value});
+              setSuggestions([]);
+            }}
           />
-          
-          {suggestions.length > 0 && (
-            <ul className="absolute z-50 w-full bg-white border border-slate-200 shadow-2xl rounded-lg mt-1 left-0 divide-y divide-slate-100 max-h-60 overflow-y-auto">
-              {suggestions.map((user) => (
-                <li 
-                  key={user.ID} 
-                  onClick={() => { 
-                    setFilters({...filters, arama: user.Ad_Soyad}); 
-                    setSuggestions([]); 
-                  }}
-                  className="px-4 py-3 hover:bg-blue-50 cursor-pointer flex flex-col"
-                >
-                  <span className="font-bold text-slate-800 text-sm">{user.Ad_Soyad}</span>
-                  <span className="text-slate-500 text-xs">Sicil: {user.Sicil_No} | {user.Departman || 'Departman Yok'}</span>
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
         
         <div>
@@ -585,21 +502,16 @@ const handleQuickSearchChange = async (e) => {
         </div>
       </form>
 
-      {/* AG GRID TABLOSU */}
       {hasSearched && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col p-2 h-[50vh]">
           <div className="p-2 text-sm font-bold text-slate-700">Arama Sonuçları ({users.length} Kayıt)</div>
           <div className="flex-1 w-full h-full">
             <CustomDataGrid 
-            ref={gridRef}
-            rowData={overtimes}
-            columnDefs={colDefs}
-            getRowId={(params) => `${params.data.User_ID}-${params.data.TarihStr}`}
-            rowSelection="multiple"
-            onSelectionChanged={onSelectionChanged}
-            quickFilterText={quickFilterText}
-            rowHeight={60}
-          />          </div>
+              rowData={users}
+              columnDefs={colDefs}
+              getRowId={(params) => params.data.ID}
+            />          
+          </div>
         </div>
       )}
     </div>

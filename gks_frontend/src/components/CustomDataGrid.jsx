@@ -1,10 +1,13 @@
 import { forwardRef, useMemo } from 'react';
 import { AgGridReact } from 'ag-grid-react';
-import { ModuleRegistry, AllCommunityModule, ValidationModule, themeQuartz } from 'ag-grid-community';
-import 'ag-grid-community/styles/ag-grid.css';
-import { customIcons, AG_GRID_LOCALE_TR } from '../utils/constants';
+import { ModuleRegistry, AllCommunityModule, ValidationModule } from 'ag-grid-community';
 
-// Modülleri sadece burada bir kez kaydediyoruz
+// 1. ÇÖZÜM: Hem ana CSS hem de Tema CSS dosyası import edildi
+import 'ag-grid-community/styles/ag-grid.css';
+import 'ag-grid-community/styles/ag-theme-quartz.css'; 
+
+import { AG_GRID_LOCALE_TR } from '../utils/constants';
+
 ModuleRegistry.registerModules([AllCommunityModule, ValidationModule]);
 
 const CustomDataGrid = forwardRef(({ 
@@ -14,11 +17,10 @@ const CustomDataGrid = forwardRef(({
   quickFilterText, 
   rowSelection, 
   onSelectionChanged,
-  rowHeight = 50, // Dışarıdan verilmezse varsayılan 50px
+  rowHeight = 50, 
   paginationPageSize = 50 
 }, ref) => {
 
-  // Tüm tablolarda geçerli olacak standart sütun ayarları
   const defaultColDef = useMemo(() => ({
     filter: true, 
     sortable: true, 
@@ -28,11 +30,10 @@ const CustomDataGrid = forwardRef(({
   }), []);
 
   return (
-    <div className="flex-1 w-full h-full">
+    // 2. ÇÖZÜM: 'ag-theme-quartz' class'ı ana kapsayıcıya eklendi
+    <div className="ag-theme-quartz flex-1 w-full h-full">
       <AgGridReact
         ref={ref}
-        theme={themeQuartz} 
-        icons={customIcons} 
         alwaysMultiSort={true} 
         getRowId={getRowId} 
         rowData={rowData}
@@ -51,7 +52,6 @@ const CustomDataGrid = forwardRef(({
   );
 });
 
-// DevTools'ta ismin düzgün görünmesi için
 CustomDataGrid.displayName = 'CustomDataGrid';
 
 export default CustomDataGrid;

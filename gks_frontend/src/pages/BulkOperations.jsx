@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../api/axios';
 import AutocompleteSearch from '../components/AutocompleteSearch';
+import AlertMessage from '../components/AlertMessage';
 
 function BulkOperations() {
   const [hedefTuru, setHedefTuru] = useState('Departman');
@@ -127,11 +128,7 @@ function BulkOperations() {
         <p className="text-slate-500 text-sm mt-1">Belirli bir gruba veya sistemdeki tüm personellere ait vardiya, yetki ve durum bilgilerini tek tıklamayla yönetin.</p>
       </div>
 
-      {message.text && (
-        <div className={`p-4 rounded-lg text-sm font-bold border ${message.type === 'success' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-          {message.text}
-        </div>
-      )}
+      <AlertMessage message={message.text} type={message.type} />
 
       <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
         <form onSubmit={handleSubmit} className="space-y-8">

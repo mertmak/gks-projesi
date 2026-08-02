@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import api from '../api/axios';
 
-// YENİ ORTAK BİLEŞEN
+// ORTAK BİLEŞENLER
 import CustomDataGrid from '../components/CustomDataGrid';
+import Modal from '../components/Modal'; // YENİ: Modal bileşeni
 
-// SQL'den gelen tarih (Date) veya saat (Time) verisini HH:mm formatına dönüştüren yardımcı fonksiyon
 const extractTime = (val) => {
   if (!val) return '-';
   if (typeof val === 'string' && val.includes('T')) {
@@ -20,6 +20,38 @@ function Reports() {
   const [selectedDate, setSelectedDate] = useState(today);
   const [reportData, setReportData] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
+  const [selectedRow, setSelectedRow] = useState(null);
+  const [approvalData, setApprovalData] = useState({ onaylanan_dk: 0, durum: 'Onaylandı', aciklama: '' });
+
+  const handleOpenApproval = (data) => {
+    setSelectedRow(data);
+    setApprovalData({
+      onaylanan_dk: data.Onaylanan_Dk || data.Fazla_Mesai_Dk,
+      durum: data.Mesai_Durumu !== 'Bekliyor' ? data.Mesai_Durumu : 'Onaylandı',
+      aciklama: ''
+    });
+    setShowApprovalModal(true);
+  };
+
+  const handleApprovalSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post('/reports/overtime-approve', {
+        user_id: selectedRow.User_ID,
+        tarih: selectedDate,
+        hesaplanan_dk: selectedRow.Fazla_Mesai_Dk,
+        onaylanan_dk: approvalData.durum === 'Reddedildi' ? 0 : approvalData.onaylanan_dk,
+        durum: approvalData.durum,
+        aciklama: approvalData.aciklama
+      });
+      setShowApprovalModal(false);
+      fetchReport(); 
+    } catch (err) {
+      alert("Mesai onayı kaydedilemedi.");
+    }
+  };
 
   const fetchReport = async () => {
     setLoading(true);
@@ -39,7 +71,6 @@ function Reports() {
     fetchReport();
   }, [selectedDate]);
 
-  // Excel/CSV Dışa Aktarma Fonksiyonu
   const onExportClick = () => {
     if (gridRef.current) {
       gridRef.current.api.exportDataAsCsv({
@@ -49,29 +80,19 @@ function Reports() {
     }
   };
 
-  // --- AG GRID SÜTUN AYARLARI ---
   const colDefs = useMemo(() => [
     { field: 'Sicil_No', headerName: 'Sicil No', width: 110, pinned: 'left' },
     { field: 'Ad_Soyad', headerName: 'Ad Soyad', flex: 1, minWidth: 160, pinned: 'left', cellClass: 'font-bold text-slate-800' },
-    
-    // YENİ EKLENEN TARİH SÜTUNU
     { 
       headerName: 'Tarih', 
-      valueGetter: () => {
-        return selectedDate.split('-').reverse().join('.');
-      },
-      width: 110,
-      cellClass: 'text-slate-500 font-medium'
+      valueGetter: () => { return selectedDate.split('-').reverse().join('.'); },
+      width: 110, cellClass: 'text-slate-500 font-medium'
     },
-    
     { field: 'Departman', headerName: 'Departman', width: 130 },
     { 
-      field: 'Vardiya_Adi', 
-      headerName: 'Vardiya', 
-      width: 150,
+      field: 'Vardiya_Adi', headerName: 'Vardiya', width: 150,
       cellRenderer: (params) => params.value ? <span className="font-bold text-slate-800">{params.value}</span> : <span className="text-slate-400 italic">Atanmamış</span>
     },
-    // YENİ EKLENEN VARDİYA SAATLERİ SÜTUNU
     { 
       headerName: 'Vardiya Saatleri', 
       valueGetter: (params) => {
@@ -80,8 +101,7 @@ function Reports() {
         const bit = extractTime(params.data.Mesai_Bitis);
         return `${bas} - ${bit}`;
       },
-      width: 140,
-      cellClass: 'font-mono text-slate-600 font-bold'
+      width: 140, cellClass: 'font-mono text-slate-600 font-bold'
     },
     { 
       headerName: 'Gerçekleşen', 
@@ -90,13 +110,10 @@ function Reports() {
         const cikis = extractTime(params.data.Son_Cikis);
         return `${giris} / ${cikis}`;
       },
-      width: 140,
-      cellClass: 'font-mono text-slate-700 font-bold'
+      width: 140, cellClass: 'font-mono text-slate-700 font-bold'
     },
     { 
-      field: 'Gec_Kalma_Dk', 
-      headerName: 'Geç', 
-      width: 90,
+      field: 'Gec_Kalma_Dk', headerName: 'Geç', width: 90,
       cellRenderer: (params) => {
         const dk = params.value;
         if (dk > 0) return <span className="text-red-600 font-black">+{dk}dk</span>;
@@ -104,9 +121,7 @@ function Reports() {
       }
     },
     { 
-      field: 'Erken_Cikma_Dk', 
-      headerName: 'Erken', 
-      width: 90,
+      field: 'Erken_Cikma_Dk', headerName: 'Erken', width: 90,
       cellRenderer: (params) => {
         const dk = params.value;
         if (dk > 0) return <span className="text-orange-500 font-black">{dk}dk</span>;
@@ -114,15 +129,11 @@ function Reports() {
       }
     },
     { 
-      field: 'Fazla_Mesai_Dk', 
-      headerName: 'Hak Edilen Mesai', 
-      width: 140,
+      field: 'Fazla_Mesai_Dk', headerName: 'Hak Edilen Mesai', width: 140,
       cellRenderer: (params) => {
         const dk = params.value;
-        // Backend'den artık sadece onaylıysa sıfırdan büyük bir değer geliyor.
         if (dk > 0) {
-          const saat = Math.floor(dk / 60);
-          const dakika = dk % 60;
+          const saat = Math.floor(dk / 60); const dakika = dk % 60;
           const text = saat > 0 ? `${saat}s ${dakika}d` : `${dk}dk`;
           return <span className="text-blue-600 font-black">+{text}</span>;
         }
@@ -130,9 +141,7 @@ function Reports() {
       }
     },
     { 
-      field: 'Toplam_Yemek_Dk', 
-      headerName: 'Yemek', 
-      width: 100,
+      field: 'Toplam_Yemek_Dk', headerName: 'Yemek', width: 100,
       cellRenderer: (params) => {
         const dk = params.value;
         if (dk > 0) return <span className="font-bold text-slate-700">{dk} dk</span>;
@@ -140,9 +149,7 @@ function Reports() {
       }
     },
     { 
-      field: 'Toplam_Mola_Dk', 
-      headerName: 'Mola', 
-      width: 100,
+      field: 'Toplam_Mola_Dk', headerName: 'Mola', width: 100,
       cellRenderer: (params) => {
         const dk = params.value;
         if (dk > 0) return <span className="font-bold text-slate-700">{dk} dk</span>;
@@ -150,9 +157,7 @@ function Reports() {
       }
     },
     { 
-      field: 'Mola_Asimi_Dk', 
-      headerName: 'Aşım', 
-      width: 90,
+      field: 'Mola_Asimi_Dk', headerName: 'Aşım', width: 90,
       cellRenderer: (params) => {
         const dk = params.value;
         if (dk > 0) return <span className="text-red-600 font-black">+{dk}dk</span>;
@@ -160,9 +165,7 @@ function Reports() {
       }
     },
     { 
-      field: 'Durum', 
-      headerName: 'Durum Özeti', 
-      width: 200,
+      field: 'Durum', headerName: 'Durum Özeti', width: 200,
       cellRenderer: (params) => {
         const text = params.value;
         let colorClass = 'bg-slate-100 text-slate-700';
@@ -178,13 +181,25 @@ function Reports() {
 
         return <span className={`px-2 py-1 rounded-full text-[11px] font-bold ${colorClass}`}>{text}</span>;
       }
-    },    
+    },
+    {
+      headerName: 'İşlem', width: 100, sortable: false, filter: false, pinned: 'right',
+      cellRenderer: (params) => {
+        if(params.data.Fazla_Mesai_Dk > 0) {
+           return (
+             <button onClick={() => handleOpenApproval(params.data)} className="px-3 py-1 bg-slate-900 text-white text-[11px] font-bold rounded hover:bg-slate-800 transition-colors mt-1">
+               İncele
+             </button>
+           );
+        }
+        return null;
+      }
+    }    
   ], [selectedDate]); 
 
   return (
     <div className="space-y-6 relative mt-8">
       
-      {/* BAŞLIK VE KONTROLLER */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
         <div>
           <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Günlük Puantaj & Devam Kontrol</h2>
@@ -194,33 +209,20 @@ function Reports() {
         <div className="flex items-end space-x-3">
           <div>
             <label className="block text-xs font-bold text-slate-600 mb-1">Rapor Tarihi</label>
-            <input 
-              type="date" 
-              value={selectedDate} 
-              onChange={(e) => setSelectedDate(e.target.value)} 
-              className="px-4 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" 
-            />
+            <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="px-4 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           
-          <button 
-            onClick={fetchReport} 
-            disabled={loading}
-            className="px-6 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-lg transition-colors"
-          >
+          <button onClick={fetchReport} disabled={loading} className="px-6 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-lg transition-colors">
             {loading ? 'Hesaplanıyor...' : 'Yenile'}
           </button>
 
-          <button 
-            onClick={onExportClick} 
-            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold text-sm rounded-lg transition-colors flex items-center"
-          >
+          <button onClick={onExportClick} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold text-sm rounded-lg transition-colors flex items-center">
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
             Excel İndir
           </button>
         </div>
       </div>
 
-      {/* İSTATİSTİK KARTLARI (ÖZET) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
           <div className="text-xs font-bold text-slate-500 mb-1">Toplam Personel</div>
@@ -228,25 +230,18 @@ function Reports() {
         </div>
         <div className="bg-white p-4 rounded-xl border border-green-200 shadow-sm">
           <div className="text-xs font-bold text-green-600 mb-1">Kurallara Uyanlar</div>
-          <div className="text-2xl font-black text-green-700">
-            {reportData.filter(r => r.Durum === 'Normal').length}
-          </div>
+          <div className="text-2xl font-black text-green-700">{reportData.filter(r => r.Durum === 'Normal').length}</div>
         </div>
         <div className="bg-white p-4 rounded-xl border border-red-200 shadow-sm">
           <div className="text-xs font-bold text-red-600 mb-1">Geç Kalan / Mola Aşan</div>
-          <div className="text-2xl font-black text-red-700">
-            {reportData.filter(r => r.Durum.includes('Geç Kaldı') || r.Durum.includes('Mola Aşımı')).length}
-          </div>
+          <div className="text-2xl font-black text-red-700">{reportData.filter(r => r.Durum.includes('Geç Kaldı') || r.Durum.includes('Mola Aşımı')).length}</div>
         </div>
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
           <div className="text-xs font-bold text-slate-500 mb-1">Devamsız</div>
-          <div className="text-2xl font-black text-slate-700">
-            {reportData.filter(r => r.Durum === 'Devamsız').length}
-          </div>
+          <div className="text-2xl font-black text-slate-700">{reportData.filter(r => r.Durum === 'Devamsız').length}</div>
         </div>
       </div>
 
-      {/* YENİ ORTAK TABLO BİLEŞENİ */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col p-4 h-[60vh]">
         <CustomDataGrid 
           ref={gridRef}
@@ -256,6 +251,66 @@ function Reports() {
           rowHeight={60}
         />
       </div>
+    
+      {/* --- MESAİ ONAY MODALI (YENİ YAPI) --- */}
+      <Modal isOpen={showApprovalModal} onClose={() => setShowApprovalModal(false)} title="Mesai İnceleme" maxWidth="max-w-sm">
+        {selectedRow && (
+          <>
+            <p className="text-sm text-slate-500 mb-4 font-bold">{selectedRow.Ad_Soyad}</p>
+            <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 mb-4 flex justify-between items-center">
+              <span className="text-sm font-bold text-blue-900">Sistemin Ölçtüğü:</span>
+              <span className="text-lg font-black text-blue-700">{selectedRow.Fazla_Mesai_Dk} Dakika</span>
+            </div>
+
+            <form onSubmit={handleApprovalSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Kararınız</label>
+                <select 
+                  value={approvalData.durum} 
+                  onChange={(e) => setApprovalData({...approvalData, durum: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg outline-none font-bold text-slate-700 focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="Onaylandı">Mesaiyi Onayla</option>
+                  <option value="Reddedildi">Mesaiyi Reddet (Ödenmeyecek)</option>
+                </select>
+              </div>
+
+              {approvalData.durum === 'Onaylandı' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Onaylanan Süre (Dakika)</label>
+                  <input 
+                    type="number" 
+                    value={approvalData.onaylanan_dk} 
+                    onChange={(e) => setApprovalData({...approvalData, onaylanan_dk: Number(e.target.value)})}
+                    className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+                    min="1"
+                    max={selectedRow.Fazla_Mesai_Dk + 120} 
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">İsterseniz sistemin ölçtüğü süreyi aşağı/yukarı yuvarlayabilirsiniz.</p>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Yönetici Notu (Opsiyonel)</label>
+                <input 
+                  type="text" 
+                  value={approvalData.aciklama} 
+                  onChange={(e) => setApprovalData({...approvalData, aciklama: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Örn: Proje yetiştirildi..."
+                />
+              </div>
+
+              <div className="flex justify-end space-x-3 mt-6">
+                <button type="button" onClick={() => setShowApprovalModal(false)} className="px-4 py-2 bg-slate-100 font-bold rounded-lg hover:bg-slate-200 text-sm">İptal</button>
+                <button type="submit" className={`px-4 py-2 text-white font-bold rounded-lg text-sm ${approvalData.durum === 'Onaylandı' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}>
+                  Kaydet
+                </button>
+              </div>
+            </form>
+          </>
+        )}
+      </Modal>
     </div>
   );
 }
